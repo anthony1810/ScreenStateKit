@@ -8,7 +8,7 @@
 import Foundation
 
 
-public protocol ScreenActionStore: ObservableObject, TypeNamed, Actor {
+public protocol ScreenActionStore: TypeNamed, Actor {
     
     associatedtype ScreenState: ScreenStates
     associatedtype Action: Sendable & ActionLockable
