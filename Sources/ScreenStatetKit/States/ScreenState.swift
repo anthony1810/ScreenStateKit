@@ -5,7 +5,7 @@ import Observation
 //MARK: - Base Screen States
 @MainActor
 @Observable
-open class ScreenStates: Sendable {
+open class ScreenState: Sendable {
     
     public var isLoading: Bool = false {
         didSet {
@@ -31,7 +31,7 @@ open class ScreenStates: Sendable {
         }
     }
     
-    private weak var parentState: ScreenStates?
+    private weak var parentState: ScreenState?
     private let parentStateOption: BindingParentStateOption
     
     private var loadingTaskCount: Int = 0 {
@@ -44,19 +44,19 @@ open class ScreenStates: Sendable {
         parentStateOption = .all
     }
 
-    public init(states: ScreenStates, options: BindingParentStateOption) {
+    public init(states: ScreenState, options: BindingParentStateOption) {
         parentState = states
         self.parentStateOption = options
     }
     
-    public init(states: ScreenStates) {
+    public init(states: ScreenState) {
         parentState = states
         self.parentStateOption = .all
     }
 }
 
 //MARK: - Updaters
-extension ScreenStates {
+extension ScreenState {
     
     public struct BindingParentStateOption: OptionSet {
         

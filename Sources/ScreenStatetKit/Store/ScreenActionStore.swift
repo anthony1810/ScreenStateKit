@@ -10,10 +10,10 @@ import Foundation
 
 public protocol ScreenActionStore: TypeNamed, Actor {
     
-    associatedtype ScreenState: ScreenStates
+    associatedtype AScreenState: ScreenState
     associatedtype Action: Sendable & ActionLockable
     
-    func binding(state: ScreenState)
+    func binding(state: AScreenState)
     
     nonisolated func receive(action: Action)
 }

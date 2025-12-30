@@ -9,7 +9,7 @@ import Combine
 
 //MARK: - Loadmore Screen States
 
-open class LoadmoreScreenStates: ScreenStates {
+open class LoadmoreScreenStates: ScreenState {
     
     @Published public private(set) var canShowLoadmore: Bool = false
     @Published public private(set) var didLoadAllData: Bool = false
