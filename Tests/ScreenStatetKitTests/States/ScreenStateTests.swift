@@ -29,6 +29,18 @@ struct ScreenStateTests {
 
         #expect(sut.isLoading == true)
     }
+
+    // MARK: - loadingFinished() Tests
+
+    @Test("loadingFinished sets isLoading to false when counter reaches zero")
+    func test_loadingFinished_setsIsLoadingToFalse() {
+        let sut = makeSUT()
+
+        sut.loadingStarted()
+        sut.loadingFinished()
+
+        #expect(sut.isLoading == false)
+    }
 }
 
 // MARK: - Helpers
