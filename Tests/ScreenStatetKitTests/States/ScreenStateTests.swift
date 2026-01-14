@@ -62,6 +62,21 @@ struct ScreenStateTests {
 
         #expect(sut.isLoading == true)
     }
+
+    // MARK: - loadingStarted(action:) Tests
+
+    @Test("loadingStarted with action only increments when canTrackLoading is true")
+    func test_loadingStartedWithAction_onlyIncrementsWhenCanTrackLoading() {
+        let sut = makeSUT()
+
+        sut.loadingStarted(action: TestAction.trackable)
+        #expect(sut.isLoading == true)
+
+        sut.loadingFinished()
+
+        sut.loadingStarted(action: TestAction.nonTrackable)
+        #expect(sut.isLoading == false)
+    }
 }
 
 // MARK: - Helpers
@@ -69,5 +84,17 @@ struct ScreenStateTests {
 extension ScreenStateTests {
     private func makeSUT() -> ScreenState {
         ScreenState()
+    }
+
+    private enum TestAction: LoadingTrackable {
+        case trackable
+        case nonTrackable
+
+        var canTrackLoading: Bool {
+            switch self {
+            case .trackable: return true
+            case .nonTrackable: return false
+            }
+        }
     }
 }
