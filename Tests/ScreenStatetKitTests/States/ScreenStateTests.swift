@@ -51,6 +51,17 @@ struct ScreenStateTests {
 
         #expect(sut.isLoading == false)
     }
+
+    @Test("isLoading stays true when counter above zero")
+    func test_isLoading_staysTrueWhenCounterAboveZero() {
+        let sut = makeSUT()
+
+        sut.loadingStarted()
+        sut.loadingStarted()
+        sut.loadingFinished()
+
+        #expect(sut.isLoading == true)
+    }
 }
 
 // MARK: - Helpers
