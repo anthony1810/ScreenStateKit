@@ -11,7 +11,10 @@
       "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit commit --amend --author=\"Anthony Tran <qquang269@gmail.com>\" -m \"Add WordLearner sample project to README\")",
       "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit push origin develop --force)",
       "Bash(git checkout:*)",
-      "Bash(xcodebuild test:*)"
+      "Bash(xcodebuild test:*)",
+      "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit add README.md)",
+      "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit commit --author=\"Anthony Tran <qquang269@gmail.com>\" -m \"Update sample project to Definery in README\")",
+      "Bash(ls:*)"
     ]
   }
 }

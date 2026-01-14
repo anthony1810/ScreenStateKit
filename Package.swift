@@ -6,7 +6,8 @@ import PackageDescription
 let package = Package(
     name: "ScreenStateKit",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v17),
+        .macOS(.v14)
     ],
     products: [
         .library(
@@ -15,13 +16,16 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "ScreenStateKit"
+            name: "ScreenStateKit",
+            path: "Sources/ScreenStatetKit"
         ),
         .testTarget(
             name: "ScreenStateKitTests",
             dependencies: [
                 "ScreenStateKit"
-            ]
+            ],
+            path: "Tests/ScreenStatetKitTests",
+            exclude: ["ScreenStateKit.xctestplan"]
         ),
     ]
 )

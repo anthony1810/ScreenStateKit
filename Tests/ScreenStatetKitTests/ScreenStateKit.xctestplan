@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "D9E96563-5AD5-482C-BE1E-28845494D1C1",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "ScreenStateKitTests",
+        "name" : "ScreenStateKitTests"
+      }
+    }
+  ],
+  "version" : 1
+}
