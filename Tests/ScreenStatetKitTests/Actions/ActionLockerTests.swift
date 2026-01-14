@@ -21,6 +21,13 @@ struct ActionLockerTests {
             try await sut.lock(action)
         }
     }
+
+    @Test("lock succeeds for new action")
+    func test_lock_succeedsForNewAction() async throws {
+        let sut = makeSUT()
+
+        try await sut.lock(TestAction.fetch)
+    }
 }
 // MARK: - Helpers
 
