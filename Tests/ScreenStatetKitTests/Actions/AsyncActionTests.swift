@@ -21,4 +21,14 @@ struct AsyncActionTests {
 
         #expect(result == 42)
     }
+
+    // MARK: - Hashable Tests
+
+    @Test("different instances are not equal")
+    func test_hashable_differentInstancesAreNotEqual() {
+        let action1 = AsyncActionVoid { }
+        let action2 = AsyncActionVoid { }
+
+        #expect(action1 != action2)
+    }
 }
