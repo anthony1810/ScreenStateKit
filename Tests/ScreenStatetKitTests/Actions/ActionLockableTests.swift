@@ -17,6 +17,16 @@ struct ActionLockableTests {
 
         #expect(action.lockkey == "fetch")
     }
+
+    @Test("lockkey distinguishes different enum cases")
+    func test_lockkey_distinguishesDifferentEnumCases() {
+        let fetchAction = TestAction.fetch
+        let loadMoreAction = TestAction.loadMore
+
+        #expect(fetchAction.lockkey != loadMoreAction.lockkey)
+        #expect(fetchAction.lockkey == "fetch")
+        #expect(loadMoreAction.lockkey == "loadMore")
+    }
 }
 
 // MARK: - Helpers
