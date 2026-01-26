@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor
 public protocol StateKeyPathUpdatable: AnyObject {
     
-    func updateState<each T>(_ updaters: repeat StateUpdater<Self, each T>,
+    func updateState<each T>(_ updater: repeat StateUpdater<Self, each T>,
                              withAnimation animation: Animation?)
 }
 
