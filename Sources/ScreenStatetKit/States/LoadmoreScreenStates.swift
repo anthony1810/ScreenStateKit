@@ -9,10 +9,11 @@ import Combine
 
 //MARK: - Loadmore Screen States
 
+@Observable
 open class LoadmoreScreenStates: ScreenState {
     
-    @Published public private(set) var canShowLoadmore: Bool = false
-    @Published public private(set) var didLoadAllData: Bool = false
+    public private(set) var canShowLoadmore: Bool = false
+    public private(set) var didLoadAllData: Bool = false
     
     public func ternimateLoadmoreView() {
         withAnimation {
