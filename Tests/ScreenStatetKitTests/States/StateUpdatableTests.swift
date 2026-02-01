@@ -6,17 +6,18 @@
 import Testing
 @testable import ScreenStateKit
 
-@Suite("StateKeyPathUpdatable Tests")
+@Suite("StateUpdatable Tests")
 @MainActor
-struct StateKeyPathUpdatableTests {
+struct StateUpdatableTests {
 
     // MARK: - updateState() Tests
 
     @Test("updateState updates single keypath value")
     func test_updateState_updatesSingleKeyPath() {
         let sut = TestState()
-
-        sut.updateState(StateUpdater(keypath: \.name, value: "Updated"))
+        sut.updateState({ state in
+            state.name = "Updated"
+        })
 
         #expect(sut.name == "Updated")
     }
@@ -24,12 +25,10 @@ struct StateKeyPathUpdatableTests {
     @Test("updateState updates multiple keypath values atomically")
     func test_updateState_updatesMultipleKeyPaths() {
         let sut = TestState()
-
-        sut.updateState(
-            StateUpdater(keypath: \.name, value: "New Name"),
-            StateUpdater(keypath: \.count, value: 42)
-        )
-
+        sut.updateState { state in
+            state.name = "New Name"
+            state.count = 42
+        }
         #expect(sut.name == "New Name")
         #expect(sut.count == 42)
     }
@@ -37,9 +36,9 @@ struct StateKeyPathUpdatableTests {
 
 // MARK: - Helpers
 
-extension StateKeyPathUpdatableTests {
+extension StateUpdatableTests {
     @MainActor
-    private final class TestState: StateKeyPathUpdatable {
+    private final class TestState: StateUpdatable {
         var name: String = ""
         var count: Int = 0
     }

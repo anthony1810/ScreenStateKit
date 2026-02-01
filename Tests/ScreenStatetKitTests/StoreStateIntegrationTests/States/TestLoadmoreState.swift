@@ -9,7 +9,7 @@ import ScreenStateKit
 
 extension StoreStateIntegrationTests {
     @MainActor
-    final class TestLoadmoreState: LoadmoreScreenStates, StateKeyPathUpdatable {
+    final class TestLoadmoreState: LoadmoreScreenStates, StateUpdatable {
         var items: [Int] = []
         var currentPage: Int = 1
         var hasMorePages: Bool = false

@@ -8,7 +8,7 @@ import ScreenStateKit
 
 extension StoreStateIntegrationTests {
     @MainActor
-    final class TestScreenState: ScreenState, StateKeyPathUpdatable {
+    final class TestScreenState: ScreenState, StateUpdatable {
         var userName: String = ""
         var userAge: Int = 0
         var userEmail: String = ""

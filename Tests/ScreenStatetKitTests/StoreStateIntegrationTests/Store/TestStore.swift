@@ -32,16 +32,16 @@ extension StoreStateIntegrationTests {
                 switch action {
                 case .fetchUser(let id):
                     fetchCount += 1
-                    await state?.updateState(StateUpdater(keypath: \.userName, value: "User \(id)"))
-
+                    await state?.updateState { state in
+                        state.userName = "User \(id)"
+                    }
                 case .fetchUserProfile:
                     fetchCount += 1
-                    await state?.updateState(
-                        StateUpdater(keypath: \.userName, value: "John Doe"),
-                        StateUpdater(keypath: \.userAge, value: 25),
-                        StateUpdater(keypath: \.userEmail, value: "john@example.com")
-                    )
-
+                    await state?.updateState { state in
+                        state.userName = "John Doe"
+                        state.userAge = 25
+                        state.userEmail = "john@example.com"
+                    }
                 case .slowFetch:
                     try await Task.sleep(for: .milliseconds(100))
 
