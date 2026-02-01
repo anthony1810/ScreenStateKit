@@ -11,7 +11,9 @@ extension StoreStateIntegrationTests {
     @MainActor
     final class TestLoadmoreState: LoadmoreScreenStates, StateKeyPathUpdatable {
         var items: [Int] = []
-        
+        var currentPage: Int = 1
+        var hasMorePages: Bool = false
+
         func simulateLoadmoreViewDisappear() {
             canExecuteLoadmore()
         }

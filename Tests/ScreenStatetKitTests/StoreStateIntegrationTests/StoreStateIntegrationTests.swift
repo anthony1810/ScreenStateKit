@@ -114,4 +114,18 @@ class StoreStateIntegrationTests {
         #expect(state.isLoading == false)
     }
 
+    @Test("loadmore with pagination updates items, page, and hasMore atomically")
+    @MainActor
+    func test_loadMoreWithPagination_updatesMultipleProperties() async throws {
+        let state = TestLoadmoreState()
+        let viewModel = TestLoadmoreStore()
+        await viewModel.binding(state: state)
+
+        await viewModel.isolatedReceive(action: .loadMoreWithPagination(page: 2))
+
+        #expect(state.items == Array(11...20))
+        #expect(state.currentPage == 2)
+        #expect(state.hasMorePages == true)
+    }
+
 }
