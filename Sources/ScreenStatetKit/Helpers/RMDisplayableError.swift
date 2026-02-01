@@ -16,7 +16,7 @@ public struct RMDisplayableError: LocalizedError, Identifiable, Hashable {
     }
     let message: String
     
-    init(message: String) {
+    public init(message: String) {
         self.message = message
         self.id = UUID().uuidString
     }

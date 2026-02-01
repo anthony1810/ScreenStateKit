@@ -25,7 +25,7 @@ public struct AnyAsyncStream<Element>: AsyncSequence, AsyncIteratorProtocol {
         return element
     }
 
-    @available(iOS 18.0, *)
+    @available(iOS 18.0, macOS 15.0, *)
     mutating public func next(isolation actor: isolated (any Actor)?) async throws(any Error) -> Element? {
         try Task.checkCancellation()
         guard let value = try await interator.next(isolation: actor) else {
