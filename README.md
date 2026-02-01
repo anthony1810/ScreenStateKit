@@ -1,5 +1,8 @@
 # ScreenStateKit
 
+[![Swift](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![iOS](https://img.shields.io/badge/iOS-17+-blue.svg)](https://developer.apple.com/ios/)
+[![macOS](https://img.shields.io/badge/macOS-14+-blue.svg)](https://developer.apple.com/macos/)
 [![Tests](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml/badge.svg)](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml)
 [![Fully Tested](https://img.shields.io/badge/coverage-fully%20tested-brightgreen)](https://github.com/anthony1810/ScreenStateKit/tree/main/Tests)
 
