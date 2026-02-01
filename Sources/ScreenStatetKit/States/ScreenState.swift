@@ -58,7 +58,7 @@ open class ScreenState: Sendable {
 //MARK: - Updaters
 extension ScreenState {
     
-    public struct BindingParentStateOption: OptionSet {
+    public struct BindingParentStateOption: OptionSet, Sendable {
         
         public let rawValue: Int
         public static let loading = BindingParentStateOption(rawValue: 1 << 0)
