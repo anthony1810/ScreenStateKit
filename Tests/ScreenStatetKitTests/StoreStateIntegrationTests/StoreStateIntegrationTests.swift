@@ -45,4 +45,22 @@ class StoreStateIntegrationTests {
         }
     }
 
+    @Test("action locker prevents duplicate action execution")
+    @MainActor
+    func test_actionLocker_preventsDuplicateExecution() async throws {
+        await withMainSerialExecutor {
+            let state = TestScreenState()
+            let sut = TestStore()
+            await sut.binding(state: state)
+            
+            sut.receive(action: .fetchUser(id: 1))
+            sut.receive(action: .fetchUser(id: 2))
+            
+            await Task.megaYield()
+            
+            #expect(state.userName == "User 1")
+            #expect(await sut.fetchCount == 1)
+        }
+    }
+
 }

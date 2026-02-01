@@ -66,8 +66,19 @@ extension StoreStateIntegrationTests {
             case fetchUser(id: Int)
             case slowFetch
             case failingAction
-            
+
             var canTrackLoading: Bool { true }
+
+            var lockkey: String {
+                switch self {
+                case .fetchUser:
+                    return "fetchUser"
+                case .slowFetch:
+                    return "slowFetch"
+                case .failingAction:
+                    return "failingAction"
+                }
+            }
         }
         
         enum TestError: LocalizedError {
