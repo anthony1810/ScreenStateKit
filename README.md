@@ -1,5 +1,7 @@
 # ScreenStateKit
 
+[![Tests](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml/badge.svg)](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml)
+
 A comprehensive Swift state management and UI toolkit for iOS 17+ applications built with SwiftUI. This framework provides reactive state containers, async action handling, task lifecycle management, and pre-built UI components for common patterns like loading states, error handling, and pagination.
 
 **Main Contributor:** [@ThangKM](https://github.com/ThangKM)
