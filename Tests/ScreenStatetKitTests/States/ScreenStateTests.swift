@@ -91,6 +91,54 @@ struct ScreenStateTests {
         sut.loadingFinished(action: TestAction.trackable)
         #expect(sut.isLoading == false)
     }
+    
+    // MARK: - displayError Tests
+
+    @Test("displayError resets isLoading to false")
+    func test_displayError_resetsLoadingState() {
+        let sut = makeSUT()
+        sut.loadingStarted()
+        #expect(sut.isLoading == true)
+
+        sut.displayError = RMDisplayableError(message: "Error")
+
+        #expect(sut.isLoading == false)
+    }
+    
+    // MARK: - Parent Binding Tests
+
+    @Test("parent binding propagates loading to parent when .loading option set")
+    func test_parentBinding_propagatesLoadingToParent() {
+        let parent = ScreenState()
+        let child = ScreenState(states: parent, options: .loading)
+
+        child.loadingStarted()
+        #expect(parent.isLoading == true)
+
+        child.loadingFinished()
+        #expect(parent.isLoading == false)
+    }
+
+    @Test("parent binding propagates error to parent when .error option set")
+    func test_parentBinding_propagatesErrorToParent() {
+        let parent = ScreenState()
+        let child = ScreenState(states: parent, options: .error)
+
+        child.displayError = RMDisplayableError(message: "Child error")
+
+        #expect(parent.displayError?.message == "Child error")
+    }
+    
+    @Test("parent binding respects options - loading only does not propagate error")
+    func test_parentBinding_respectsOptions() {
+        let parent = ScreenState()
+        let child = ScreenState(states: parent, options: .loading)
+
+        child.displayError = RMDisplayableError(message: "Child error")
+
+        #expect(parent.displayError == nil)
+    }
+
 }
 
 // MARK: - Helpers
