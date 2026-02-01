@@ -57,7 +57,7 @@ extension StoreStateIntegrationTests {
             return Array(start...end)
         }
 
-        enum Action: ActionLockable, LoadingTrackable {
+        enum Action: ActionLockable, LoadingTrackable, Hashable {
             case loadMore
             case loadMoreWithPagination(page: Int)
 

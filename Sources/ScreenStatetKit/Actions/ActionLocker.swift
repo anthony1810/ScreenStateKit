@@ -10,23 +10,23 @@ import Foundation
 
 public actor ActionLocker {
     
-    private var actions: [String: Bool]
+    private var actions: [AnyHashable: Bool]
     
     public init() {
         actions = .init()
     }
     
     public func lock(_ action: ActionLockable) throws {
-        let isRunning = actions[action.lockkey] ?? false
+        let isRunning = actions[action.lockKey] ?? false
         guard !isRunning else {
             throw Errors.actionIsRunning
         }
-        actions.updateValue(true, forKey: action.lockkey)
+        actions.updateValue(true, forKey: action.lockKey)
     }
     
     public func unlock(_ action: ActionLockable) {
-        guard actions[action.lockkey] != .none else { return }
-        actions.updateValue(false, forKey: action.lockkey)
+        guard actions[action.lockKey] != .none else { return }
+        actions.updateValue(false, forKey: action.lockKey)
     }
     
     public func canExecute(_ action: ActionLockable) -> Bool {

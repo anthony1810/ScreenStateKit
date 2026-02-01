@@ -6,12 +6,11 @@
 //
 
 public protocol ActionLockable {
-    var lockkey: String { get }
+    var lockKey: AnyHashable { get }
 }
 
-extension ActionLockable {
-    public var lockkey: String {
-        let name = String(describing: self).prefix(100)
-        return String(name)
+extension ActionLockable where Self: Hashable {
+    public var lockKey: AnyHashable {
+        self
     }
 }

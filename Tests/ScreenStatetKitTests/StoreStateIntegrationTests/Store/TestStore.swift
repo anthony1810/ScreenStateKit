@@ -64,7 +64,7 @@ extension StoreStateIntegrationTests {
 
             var canTrackLoading: Bool { true }
 
-            var lockkey: String {
+            var lockKey: AnyHashable {
                 switch self {
                 case .fetchUser:
                     return "fetchUser"
