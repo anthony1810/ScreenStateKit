@@ -63,4 +63,19 @@ class StoreStateIntegrationTests {
         }
     }
 
+    // MARK: - Error Handling Tests
+
+    @Test("error action sets displayError on state")
+    @MainActor
+    func test_errorAction_setsDisplayError() async throws {
+        let state = TestScreenState()
+        let sut = TestStore()
+        await sut.binding(state: state)
+
+        await sut.isolatedReceive(action: .failingAction)
+
+        #expect(state.displayError?.errorDescription == "Something went wrong")
+        #expect(state.isLoading == false)
+    }
+
 }
