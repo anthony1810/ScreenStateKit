@@ -1,5 +1,5 @@
 //
-//  LoadmoreScreenStates.swift
+//  LoadmoreScreenState.swift
 //  ScreenStatetKit
 //
 //  Created by Anthony on 4/12/25.
@@ -9,10 +9,11 @@ import Combine
 
 //MARK: - Loadmore Screen States
 
-open class LoadmoreScreenStates: ScreenState {
+@Observable
+open class LoadmoreScreenState: ScreenState {
     
-    @Published public private(set) var canShowLoadmore: Bool = false
-    @Published public private(set) var didLoadAllData: Bool = false
+    public private(set) var canShowLoadmore: Bool = false
+    public private(set) var didLoadAllData: Bool = false
     
     public func ternimateLoadmoreView() {
         withAnimation {

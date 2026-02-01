@@ -9,9 +9,9 @@ import SwiftUI
 
 public struct RMLoadmoreView: View {
     
-    var states: LoadmoreScreenStates
+    var states: LoadmoreScreenState
 
-    public init(states: LoadmoreScreenStates) {
+    public init(states: LoadmoreScreenState) {
         self.states = states
     }
     

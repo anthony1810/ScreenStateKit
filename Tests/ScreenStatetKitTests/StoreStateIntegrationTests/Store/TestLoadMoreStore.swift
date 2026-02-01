@@ -27,17 +27,19 @@ extension StoreStateIntegrationTests {
 
             switch action {
             case .loadMore:
-                await state?.updateState(StateUpdater(keypath: \.items, value: Array(1...10)))
+                await state?.updateState { state in
+                    state.items = Array(1...10)
+                }
                 await state?.ternimateLoadmoreView()
 
             case .loadMoreWithPagination(let page):
                 let items = makeItemsForPage(page)
                 let hasMore = page < 5
-                await state?.updateState(
-                    StateUpdater(keypath: \.items, value: items),
-                    StateUpdater(keypath: \.currentPage, value: page),
-                    StateUpdater(keypath: \.hasMorePages, value: hasMore)
-                )
+                await state?.updateState { state in
+                    state.items = items
+                    state.currentPage = page
+                    state.hasMorePages = hasMore
+                }
                 await state?.ternimateLoadmoreView()
             }
 
@@ -55,7 +57,7 @@ extension StoreStateIntegrationTests {
             return Array(start...end)
         }
 
-        enum Action: ActionLockable, LoadingTrackable {
+        enum Action: ActionLockable, LoadingTrackable, Hashable {
             case loadMore
             case loadMoreWithPagination(page: Int)
 

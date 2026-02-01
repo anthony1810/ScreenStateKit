@@ -11,11 +11,12 @@ struct ActionLockableTests {
 
     // MARK: - lockkey Tests
 
-    @Test("lockkey generates from type description")
+    @Test("lockkey same action yields same key")
     func test_lockkey_generatesFromTypeDescription() {
         let action = TestAction.fetch
-
-        #expect(action.lockkey == "fetch")
+        let sameAction = TestAction.fetch
+        
+        #expect(action.lockKey == sameAction.lockKey)
     }
 
     @Test("lockkey distinguishes different enum cases")
@@ -23,17 +24,26 @@ struct ActionLockableTests {
         let fetchAction = TestAction.fetch
         let loadMoreAction = TestAction.loadMore
 
-        #expect(fetchAction.lockkey != loadMoreAction.lockkey)
-        #expect(fetchAction.lockkey == "fetch")
-        #expect(loadMoreAction.lockkey == "loadMore")
+        #expect(fetchAction.lockKey != loadMoreAction.lockKey)
+    }
+    
+    @Test("lockey by enum parametters")
+    func test_LockeyWithEnumParameters() {
+        let readAction1 = TestAction.read(byId: 1)
+        let readAction2 = TestAction.read(byId: 2)
+        let readActionSame1 = TestAction.read(byId: 1)
+        
+        #expect(readAction1.lockKey != readAction2.lockKey)
+        #expect(readAction1.lockKey == readActionSame1.lockKey)
     }
 }
 
 // MARK: - Helpers
 
 extension ActionLockableTests {
-    private enum TestAction: ActionLockable {
+    private enum TestAction: ActionLockable, Hashable {
         case fetch
         case loadMore
+        case read(byId: Int)
     }
 }

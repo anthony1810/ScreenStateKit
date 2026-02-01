@@ -12,7 +12,7 @@ struct LoadmoreScreenStatesTests {
     
     @Test("init starts with canShowLoadmore false and didLoadAllData false")
     func test_init_startsWithDefaultValues() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
 
         #expect(sut.canShowLoadmore == false)
         #expect(sut.didLoadAllData == false)
@@ -20,7 +20,7 @@ struct LoadmoreScreenStatesTests {
 
     @Test("canExecuteLoadmore sets canShowLoadmore to true when didLoadAllData is false")
     func test_canExecuteLoadmore_setsCanShowLoadmoreTrue() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
 
         sut.canExecuteLoadmore()
 
@@ -29,7 +29,7 @@ struct LoadmoreScreenStatesTests {
 
     @Test("canExecuteLoadmore does nothing when didLoadAllData is true")
     func test_canExecuteLoadmore_doesNothingWhenDidLoadAllData() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
         sut.updateDidLoadAllData(true)
 
         sut.canExecuteLoadmore()
@@ -39,7 +39,7 @@ struct LoadmoreScreenStatesTests {
     
     @Test("updateDidLoadAllData(true) sets didLoadAllData true and canShowLoadmore false")
     func test_updateDidLoadAllData_true_setsDidLoadAllDataAndHidesLoadmore() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
         sut.canExecuteLoadmore() // Set canShowLoadmore to true first
 
         sut.updateDidLoadAllData(true)
@@ -51,7 +51,7 @@ struct LoadmoreScreenStatesTests {
     
     @Test("ternimateLoadmoreView sets canShowLoadmore to false")
     func test_terminateLoadmoreView_setsCanShowLoadmoreFalse() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
         sut.canExecuteLoadmore() // First set it to true
         #expect(sut.canShowLoadmore == true)
 
@@ -62,7 +62,7 @@ struct LoadmoreScreenStatesTests {
     
     @Test("updateDidLoadAllData(false) sets didLoadAllData false and canShowLoadmore true")
     func test_updateDidLoadAllData_false_clearsDidLoadAllDataAndShowsLoadmore() {
-        let sut = LoadmoreScreenStates()
+        let sut = LoadmoreScreenState()
         sut.updateDidLoadAllData(true) // First exhaust data
         #expect(sut.didLoadAllData == true)
 

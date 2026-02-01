@@ -63,7 +63,6 @@ extension ScreenState {
         public let rawValue: Int
         public static let loading = BindingParentStateOption(rawValue: 1 << 0)
         public static let error = BindingParentStateOption(rawValue: 1 << 1)
-        
         public static let all: BindingParentStateOption = [.loading, .error]
         
         public init(rawValue: Int) {
