@@ -101,25 +101,12 @@ import ScreenStateKit
 import Observation
 
 @Observable @MainActor
-final class FeatureViewState: ScreenState {
+final class FeatureViewState: LoadmoreScreenState, StateUpdatable {
     // UI Configuration
     let headerHeight: CGFloat = 120.0
 
     // Data State
-    private(set) var items: [Item] = []
-    private(set) var shouldShowLoadMore: Bool = false
-
-    /// Safe property update helper
-    func tryUpdate<T>(
-        property: @autoclosure @MainActor () -> KeyPath<FeatureViewState, T>,
-        newValue: T
-    ) {
-        guard let keypath = property() as? ReferenceWritableKeyPath<FeatureViewState, T> else {
-            assertionFailure("Read-only property")
-            return
-        }
-        self[keyPath: keypath] = newValue
-    }
+    var items: [Item] = []
 }
 ```
 
@@ -193,13 +180,17 @@ actor FeatureViewStore: ScreenActionStore {
     // MARK: - Action Implementations
     private func fetchItems() async throws {
         let result = try await dataService.fetchItems(page: 1, limit: 20)
-        await viewState?.tryUpdate(property: \.items, newValue: result.items)
+        await viewState?.updateState { state in
+            state.items = result.items
+        }
     }
 
     private func loadMoreItems() async throws {
+        let currentItems = await viewState?.items ?? []
         let result = try await dataService.fetchItems(page: 2, limit: 20)
-        let allItems = (await viewState?.items ?? []) + result.items
-        await viewState?.tryUpdate(property: \.items, newValue: allItems)
+        await viewState?.updateState { state in
+            state.items = currentItems + result.items
+        }
     }
 }
 ```
@@ -257,7 +248,7 @@ struct FeatureView: View {
             }
 
             // Load more indicator
-            if viewState.shouldShowLoadMore {
+            if !viewState.items.isEmpty && viewState.canShowLoadmore {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .onAppear {
