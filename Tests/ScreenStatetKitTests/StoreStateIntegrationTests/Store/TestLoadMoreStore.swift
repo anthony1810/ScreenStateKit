@@ -11,7 +11,7 @@ import ScreenStateKit
 extension StoreStateIntegrationTests {
     actor TestLoadmoreStore: ScreenActionStore {
         private var state: TestLoadmoreState?
-        private let actionLocker = ActionLocker()
+        private let actionLocker = ActionLocker.nonIsolated
 
         func binding(state: TestLoadmoreState) {
             self.state = state
@@ -22,7 +22,7 @@ extension StoreStateIntegrationTests {
         }
 
         func isolatedReceive(action: Action) async {
-            guard await actionLocker.canExecute(action) else { return }
+            guard actionLocker.canExecute(action) else { return }
             await state?.loadingStarted(action: action)
 
             switch action {
@@ -43,7 +43,7 @@ extension StoreStateIntegrationTests {
                 await state?.ternimateLoadmoreView()
             }
 
-            await actionLocker.unlock(action)
+            actionLocker.unlock(action)
             await state?.loadingFinished(action: action)
         }
 

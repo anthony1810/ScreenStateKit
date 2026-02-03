@@ -95,7 +95,7 @@ extension ActionLockerTests {
         case loadMore
     }
 
-    private func makeSUT() -> ActionLocker {
-        ActionLocker()
+    private func makeSUT() -> IsolatedActionLocker {
+        ActionLocker.isolated
     }
 }
