@@ -11,7 +11,7 @@ extension StoreStateIntegrationTests {
     
     actor TestStore: ScreenActionStore {
         private var state: TestScreenState?
-        private let actionLocker = ActionLocker()
+        private let actionLocker = ActionLocker.nonIsolated
         private(set) var fetchCount = 0
         
         func binding(state: TestScreenState) {
@@ -25,7 +25,7 @@ extension StoreStateIntegrationTests {
         }
         
         func isolatedReceive(action: Action) async {
-            guard await actionLocker.canExecute(action) else { return }
+            guard actionLocker.canExecute(action) else { return }
             await state?.loadingStarted(action: action)
             
             do {
@@ -52,7 +52,7 @@ extension StoreStateIntegrationTests {
                 await state?.showError(RMDisplayableError(message: error.localizedDescription))
             }
             
-            await actionLocker.unlock(action)
+            actionLocker.unlock(action)
             await state?.loadingFinished(action: action)
         }
         

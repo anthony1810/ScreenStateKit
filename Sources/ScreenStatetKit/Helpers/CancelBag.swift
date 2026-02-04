@@ -11,40 +11,55 @@ import Foundation
 
 public actor CancelBag {
 
-    private var cancellers: [String:Canceller]
+    private let storage: CancelBagStorage
     
     public init() {
-        cancellers = .init()
+        storage = .init()
     }
     
     public func cancelAll() {
+        storage.cancelAll()
+    }
+    
+    public func cancel(forIdentifier identifier: String) {
+        storage.cancel(forIdentifier: identifier)
+    }
+    
+    private func insert(_ canceller: Canceller) {
+        storage.insert(canceller: canceller)
+    }
+    
+    nonisolated fileprivate func append(canceller: Canceller) {
+        Task(priority: .high) {
+            await insert(canceller)
+        }
+    }
+}
+
+private final class CancelBagStorage {
+    
+    private var cancellers: [String: Canceller] = [:]
+    
+    func cancelAll() {
         let runningTasks = cancellers.values.filter({ !$0.isCancelled })
         runningTasks.forEach{ $0.cancel() }
         cancellers.removeAll()
     }
     
-    public func cancel(forIdentifier identifier: String) {
+    func cancel(forIdentifier identifier: String) {
         guard let task = cancellers[identifier] else { return }
         task.cancel()
         cancellers.removeValue(forKey: identifier)
     }
     
-    nonisolated public func cancelAllInTask() {
-        Task(priority: .high) {
-            await cancelAll()
-        }
-    }
-    
-    private func store(_ canceller: Canceller) {
+    func insert(canceller: Canceller) {
         cancel(forIdentifier: canceller.id)
         guard !canceller.isCancelled else { return }
         cancellers.updateValue(canceller, forKey: canceller.id)
     }
     
-    nonisolated fileprivate func append(canceller: Canceller) {
-        Task(priority: .high) {
-            await store(canceller)
-        }
+    deinit {
+        cancelAll()
     }
 }
 
