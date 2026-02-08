@@ -1,5 +1,5 @@
 //
-//  RMDisplayableError.swift
+//  DisplayableError.swift
 //  ScreenStatetKit
 //
 //  Created by Anthony on 4/12/25.
@@ -21,7 +21,4 @@ public struct DisplayableError: LocalizedError, Identifiable, Hashable {
         self.id = UUID().uuidString
     }
 }
-
-@available(*, deprecated, renamed: "DisplayableError")
-public typealias RMDisplayableError = DisplayableError
 
