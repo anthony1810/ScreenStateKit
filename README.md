@@ -180,7 +180,7 @@ actor FeatureViewStore: ScreenActionStore {
             }
         } catch {
             await viewState?.showError(
-                RMDisplayableError(message: error.localizedDescription)
+                DisplayableError(message: error.localizedDescription)
             )
         }
 
@@ -770,7 +770,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | Struct | Purpose |
 |--------|---------|
 | `AsyncAction<Input, Output>` | Generic async action wrapper with `execute` and `asyncExecute` |
-| `RMDisplayableError` | `LocalizedError` wrapper for displaying error alerts |
+| `DisplayableError` | `LocalizedError` wrapper for displaying error alerts |
 | `AnyAsyncStream<Element>` | Type-erased `AsyncSequence` wrapper |
 | `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
 
@@ -778,7 +778,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 
 | Modifier | Purpose |
 |----------|---------|
-| `.onShowError(_:)` | Displays error alert from `RMDisplayableError?` binding |
+| `.onShowError(_:)` | Displays error alert from `DisplayableError?` binding |
 | `.onShowLoading(_:)` | Shows centered progress indicator |
 | `.onShowBlockLoading(_:subtitles:)` | Shows full-screen blocking loading overlay |
 | `.placeholder(_:)` | Applies `.redacted(reason: .placeholder)` for skeleton loading |

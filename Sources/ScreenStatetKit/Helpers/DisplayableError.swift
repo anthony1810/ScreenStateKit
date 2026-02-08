@@ -8,17 +8,20 @@
 
 import SwiftUI
 
-public struct RMDisplayableError: LocalizedError, Identifiable, Hashable {
-    
+public struct DisplayableError: LocalizedError, Identifiable, Hashable {
+
     public let id: String
     public var errorDescription: String? {
         message
     }
     let message: String
-    
+
     public init(message: String) {
         self.message = message
         self.id = UUID().uuidString
     }
 }
+
+@available(*, deprecated, renamed: "DisplayableError")
+public typealias RMDisplayableError = DisplayableError
 
