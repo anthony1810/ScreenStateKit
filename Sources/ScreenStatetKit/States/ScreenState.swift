@@ -18,7 +18,7 @@ open class ScreenState: Sendable {
         }
     }
     
-    public var displayError: RMDisplayableError? {
+    public var displayError: DisplayableError? {
         didSet {
             if let displayError {
                 isLoading = false

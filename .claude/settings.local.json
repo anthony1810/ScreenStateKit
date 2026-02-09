@@ -14,7 +14,11 @@
       "Bash(xcodebuild test:*)",
       "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit add README.md)",
       "Bash(git -C /Users/anthony/Documents/personal-projects/ScreenStatetKit commit --author=\"Anthony Tran <qquang269@gmail.com>\" -m \"Update sample project to Definery in README\")",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git mv:*)",
+      "Skill(pfw-testing)",
+      "Skill(pfw-testing:*)",
+      "Bash(git status:*)"
     ]
   }
 }

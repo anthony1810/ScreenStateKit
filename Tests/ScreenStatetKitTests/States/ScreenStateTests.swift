@@ -100,7 +100,7 @@ struct ScreenStateTests {
         sut.loadingStarted()
         #expect(sut.isLoading == true)
 
-        sut.displayError = RMDisplayableError(message: "Error")
+        sut.displayError = DisplayableError(message: "Error")
 
         #expect(sut.isLoading == false)
     }
@@ -124,7 +124,7 @@ struct ScreenStateTests {
         let parent = ScreenState()
         let child = ScreenState(states: parent, options: .error)
 
-        child.displayError = RMDisplayableError(message: "Child error")
+        child.displayError = DisplayableError(message: "Child error")
 
         #expect(parent.displayError?.message == "Child error")
     }
@@ -134,7 +134,7 @@ struct ScreenStateTests {
         let parent = ScreenState()
         let child = ScreenState(states: parent, options: .loading)
 
-        child.displayError = RMDisplayableError(message: "Child error")
+        child.displayError = DisplayableError(message: "Child error")
 
         #expect(parent.displayError == nil)
     }

@@ -49,7 +49,7 @@ extension StoreStateIntegrationTests {
                     throw TestError.somethingWentWrong
                 }
             } catch {
-                await state?.showError(RMDisplayableError(message: error.localizedDescription))
+                await state?.showError(DisplayableError(message: error.localizedDescription))
             }
             
             actionLocker.unlock(action)

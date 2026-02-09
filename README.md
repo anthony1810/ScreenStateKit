@@ -1,6 +1,6 @@
 # ScreenStateKit
 
-[![Swift](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![iOS](https://img.shields.io/badge/iOS-17+-blue.svg)](https://developer.apple.com/ios/)
 [![macOS](https://img.shields.io/badge/macOS-14+-blue.svg)](https://developer.apple.com/macos/)
 [![Tests](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml/badge.svg)](https://github.com/anthony1810/ScreenStateKit/actions/workflows/tests.yml)
@@ -20,17 +20,22 @@ Check out the [Definery](https://github.com/anthony1810/Definery) app for a real
 - [Installation](#installation)
 - [Architecture Overview](#architecture-overview)
 - [Complete Feature Example](#complete-feature-example)
+- [StateUpdatable](#stateupdatable)
+- [Parent State Binding](#parent-state-binding)
 - [View Modifiers](#view-modifiers)
+- [Skeleton Loading (Placeholder)](#skeleton-loading-placeholder)
+- [Load More Pagination](#load-more-pagination)
 - [Environment CRUD Callbacks](#environment-crud-callbacks)
 - [AsyncAction](#asyncaction)
 - [Async Streaming](#async-streaming)
+- [API Reference](#api-reference)
 - [License](#license)
 
 ---
 
 ## Requirements
 
-- iOS 17.0+
+- iOS 17.0+ / macOS 14.0+
 - Swift 5.9+
 - Xcode 15.0+
 
@@ -42,8 +47,14 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/anthropics/ScreenStateKit.git", from: "1.0.0")
+    .package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.0.0")
 ]
+```
+
+Or in Xcode: **File > Add Package Dependencies** and enter:
+
+```
+https://github.com/anthony1810/ScreenStateKit.git
 ```
 
 ---
@@ -151,26 +162,26 @@ actor FeatureViewStore: ScreenActionStore {
 
     nonisolated func receive(action: Action) {
         Task {
-            do {
-                try await isolatedReceive(action: action)
-            } catch {
-                await viewState?.showError(
-                    RMDisplayableError(message: error.localizedDescription)
-                )
-            }
+            await isolatedReceive(action: action)
         }
     }
 
     // MARK: - Action Processing
-    func isolatedReceive(action: Action) async throws {
+    func isolatedReceive(action: Action) async {
         guard await actionLocker.canExecute(action) else { return }
         await viewState?.loadingStarted(action: action)
 
-        switch action {
-        case .fetchItems:
-            try await fetchItems()
-        case .loadMore:
-            try await loadMoreItems()
+        do {
+            switch action {
+            case .fetchItems:
+                try await fetchItems()
+            case .loadMore:
+                try await loadMoreItems()
+            }
+        } catch {
+            await viewState?.showError(
+                DisplayableError(message: error.localizedDescription)
+            )
         }
 
         await actionLocker.unlock(action)
@@ -249,11 +260,7 @@ struct FeatureView: View {
 
             // Load more indicator
             if !viewState.items.isEmpty && viewState.canShowLoadmore {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .onAppear {
-                        viewStore.receive(action: .loadMore)
-                    }
+                RMLoadmoreView(states: viewState)
             }
         }
         .refreshable {
@@ -277,6 +284,91 @@ struct FeatureView: View {
     }
 }
 ```
+
+---
+
+## StateUpdatable
+
+The `StateUpdatable` protocol provides a safe way to batch state updates with optional animation and transaction control.
+
+```swift
+@MainActor
+public protocol StateUpdatable {
+    func updateState(
+        _ updateBlock: @MainActor (_ state: Self) -> Void,
+        withAnimation animation: Animation?,
+        disablesAnimations: Bool
+    )
+}
+```
+
+Conform your state class to `StateUpdatable` to gain the `updateState` method:
+
+```swift
+@Observable @MainActor
+final class MyViewState: ScreenState, StateUpdatable {
+    var items: [Item] = []
+    var title: String = ""
+}
+```
+
+### Usage
+
+```swift
+// Basic state update (no animation)
+await viewState?.updateState { state in
+    state.items = newItems
+    state.title = "Updated"
+}
+
+// Update with animation
+await viewState?.updateState({ state in
+    state.items = newItems
+}, withAnimation: .easeInOut)
+
+// Update with animations disabled
+await viewState?.updateState({ state in
+    state.items = newItems
+}, disablesAnimations: true)
+```
+
+---
+
+## Parent State Binding
+
+`ScreenState` supports parent-child relationships, where loading and error states propagate upward from a child state to a parent.
+
+```swift
+public struct BindingParentStateOption: OptionSet, Sendable {
+    public static let loading  // Propagate loading state
+    public static let error    // Propagate error state
+    public static let all      // Propagate both (default)
+}
+```
+
+### Usage
+
+```swift
+@Observable @MainActor
+final class ParentViewState: ScreenState { }
+
+@Observable @MainActor
+final class ChildViewState: ScreenState {
+    init(parent: ParentViewState) {
+        // Propagate both loading and error to parent
+        super.init(states: parent)
+    }
+}
+
+// Or selectively propagate only loading:
+final class ChildViewState: ScreenState {
+    init(parent: ParentViewState) {
+        super.init(states: parent, options: .loading)
+    }
+}
+```
+
+When the child's `isLoading` changes or `displayError` is set, the parent state is automatically updated.
 
 ---
 
@@ -304,6 +396,98 @@ Shows full-screen semi-transparent loading overlay that blocks interaction.
 
 ```swift
 .onShowBlockLoading($viewState.isLoading, subtitles: "Saving...")
+```
+
+---
+
+## Skeleton Loading (Placeholder)
+
+ScreenStateKit provides a `PlaceholderRepresentable` protocol and `.placeholder()` view modifier for skeleton loading effects using SwiftUI's built-in `.redacted(reason: .placeholder)`.
+
+### 1. Conform Your Data to PlaceholderRepresentable
+
+```swift
+struct HomeSnapshot: Equatable, PlaceholderRepresentable {
+    let items: [Item]
+
+    static var placeholder: HomeSnapshot {
+        HomeSnapshot(items: Item.mocks)
+    }
+
+    var isPlaceholder: Bool { self == .placeholder }
+}
+```
+
+### 2. Use .placeholder() in Your View
+
+The `.placeholder()` modifier applies `.redacted(reason: .placeholder)` automatically when the value is a placeholder instance:
+
+```swift
+ForEach(viewState.snapshot.items) { item in
+    ItemCardView(item: item)
+}
+.placeholder(viewState.snapshot)
+```
+
+Pair it with a shimmer library for a polished skeleton loading effect:
+
+```swift
+ForEach(viewState.snapshot.items) { item in
+    ItemCardView(item: item)
+}
+.placeholder(viewState.snapshot)
+.shimmering(active: viewState.snapshot.isPlaceholder)
+```
+
+### 3. Initialize State with Placeholder
+
+```swift
+@Observable @MainActor
+final class HomeViewState: ScreenState, StateUpdatable {
+    var snapshot: HomeSnapshot = .placeholder  // Start with skeleton
+}
+```
+
+Once real data loads, update the snapshot and the redaction is automatically removed.
+
+---
+
+## Load More Pagination
+
+### LoadmoreScreenState
+
+Extend `LoadmoreScreenState` instead of `ScreenState` to get built-in pagination support:
+
+```swift
+@Observable @MainActor
+final class ListViewState: LoadmoreScreenState, StateUpdatable {
+    var items: [Item] = []
+}
+```
+
+**Properties:**
+- `canShowLoadmore: Bool` (read-only) - Whether the load more indicator should be visible
+- `didLoadAllData: Bool` (read-only) - Whether all data has been loaded
+
+**Methods:**
+- `canExecuteLoadmore()` - Enables the load more indicator (no-op if `didLoadAllData` is true)
+- `updateDidLoadAllData(_ didLoadAllData: Bool)` - Updates the `didLoadAllData` flag and toggles `canShowLoadmore`
+- `ternimateLoadmoreView()` - Hides the load more indicator
+
+### RMLoadmoreView
+
+A pre-built `ProgressView` that automatically calls `canExecuteLoadmore()` when it disappears (scrolled past):
+
+```swift
+List {
+    ForEach(viewState.items) { item in
+        ItemRow(item: item)
+    }
+
+    if viewState.canShowLoadmore {
+        RMLoadmoreView(states: viewState)
+    }
+}
 ```
 
 ---
@@ -455,7 +639,7 @@ let user = try await fetchUser.asyncExecute("user-123")
 
 ### StreamProducer
 
-A multi-consumer async event emitter (actor-based) that allows multiple subscribers to receive events.
+A multi-consumer async event emitter (actor-based) that allows multiple subscribers to receive events. Conforms to the `StreamProducerType` protocol.
 
 ```swift
 // Create a stream producer
@@ -480,6 +664,21 @@ Task {
 // Finish the stream when done
 await eventProducer.finish()
 ```
+
+**Options:**
+- `withLatest: Bool` (default `true`) - When `true`, new subscribers immediately receive the most recently emitted element.
+
+```swift
+// New subscribers get the latest element immediately
+let producer = StreamProducer<Int>(element: 0, withLatest: true)
+
+// New subscribers only get future elements
+let producer = StreamProducer<Int>(withLatest: false)
+```
+
+**Non-isolated methods** for use from `nonisolated` or `deinit` contexts:
+- `nonIsolatedEmit(_ element:)` - Emits from a non-isolated context
+- `nonIsolatedFinish()` - Finishes the stream from a non-isolated context
 
 ### CancelBag
 
@@ -510,6 +709,15 @@ actor MyViewModel {
 }
 ```
 
+**Methods:**
+- `cancelAll()` - Cancels all stored tasks
+- `cancel(forIdentifier:)` - Cancels a specific task by its identifier
+- `cancelAllInTask()` - Non-isolated version for use in `deinit`
+
+**Task extension:**
+- `task.store(in: cancelBag)` - Store with auto-generated identifier
+- `task.store(in: cancelBag, withIdentifier: "id")` - Store with a specific identifier (cancels any existing task with the same identifier)
+
 ### AnyAsyncStream
 
 Type-erased wrapper for any `AsyncSequence`, useful for abstracting different stream types.
@@ -525,6 +733,59 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
     }
 }
 ```
+
+---
+
+## API Reference
+
+### Protocols
+
+| Protocol | Purpose |
+|----------|---------|
+| `ScreenActionStore` | Actor-based protocol for ViewModels. Requires `binding(state:)` and `receive(action:)` |
+| `ActionLockable` | Provides a `lockKey` for action deduplication. Auto-conforms for `Hashable` types |
+| `LoadingTrackable` | Declares whether an action should track loading state via `canTrackLoading` |
+| `StateUpdatable` | Provides `updateState(_:withAnimation:disablesAnimations:)` for batched state updates |
+| `PlaceholderRepresentable` | Declares `placeholder` and `isPlaceholder` for skeleton loading |
+| `StreamProducerType` | Actor protocol for multi-subscriber async stream producers |
+| `TypeNamed` | Provides `declaredName` and `typeNamed` for type name reflection |
+
+### Classes
+
+| Class | Purpose |
+|-------|---------|
+| `ScreenState` | `@Observable @MainActor` base class with loading counter, error handling, and parent binding |
+| `LoadmoreScreenState` | Extends `ScreenState` with pagination state (`canShowLoadmore`, `didLoadAllData`) |
+
+### Actors
+
+| Actor | Purpose |
+|-------|---------|
+| `ActionLocker` | Prevents duplicate action execution with `lock`, `unlock`, `canExecute`, `free` |
+| `CancelBag` | Task lifecycle management with identifier-based cancellation |
+| `StreamProducer<Element>` | Multi-subscriber async stream with optional latest-value replay |
+
+### Structs
+
+| Struct | Purpose |
+|--------|---------|
+| `AsyncAction<Input, Output>` | Generic async action wrapper with `execute` and `asyncExecute` |
+| `DisplayableError` | `LocalizedError` wrapper for displaying error alerts |
+| `AnyAsyncStream<Element>` | Type-erased `AsyncSequence` wrapper |
+| `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
+
+### View Modifiers
+
+| Modifier | Purpose |
+|----------|---------|
+| `.onShowError(_:)` | Displays error alert from `DisplayableError?` binding |
+| `.onShowLoading(_:)` | Shows centered progress indicator |
+| `.onShowBlockLoading(_:subtitles:)` | Shows full-screen blocking loading overlay |
+| `.placeholder(_:)` | Applies `.redacted(reason: .placeholder)` for skeleton loading |
+| `.onEdited(_:)` | Environment callback for edit actions |
+| `.onDeleted(_:)` | Environment callback for delete actions |
+| `.onCreated(_:)` | Environment callback for create actions |
+| `.onCancelled(_:)` | Environment callback for cancel actions |
 
 ---
 

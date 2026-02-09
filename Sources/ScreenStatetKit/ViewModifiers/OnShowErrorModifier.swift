@@ -8,7 +8,7 @@ import SwiftUI
 struct OnShowErrorModifier: ViewModifier {
     
     @State private var isPresentAlert: Bool = false
-    @Binding var error: RMDisplayableError?
+    @Binding var error: DisplayableError?
     
     private var errorMessage: String {
         error?.message ?? "Something went wrong."
@@ -40,7 +40,7 @@ struct OnShowErrorModifier: ViewModifier {
 
 
 extension View {
-    public func onShowError(_ error: Binding<RMDisplayableError?>) -> some View {
+    public func onShowError(_ error: Binding<DisplayableError?>) -> some View {
         modifier(OnShowErrorModifier(error: error))
     }
 }
