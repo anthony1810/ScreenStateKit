@@ -1,0 +1,85 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.6 Chrome/140.0.7339.249 Electron/38.8.0 Safari/537.36" version="29.3.6">
+  <diagram id="nU70RxNkV__6CDqtBoSX" name="Page-1">
+    <mxGraphModel dx="1281" dy="553" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="3169" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" parent="1" style="text;html=1;fontSize=18;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#333333;" value="Parent-Child State Binding" vertex="1">
+          <mxGeometry height="40" width="500" x="150" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;arcSize=10;" value="" vertex="1">
+          <mxGeometry height="100" width="320" x="240" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="4" parent="1" style="text;html=1;fontSize=15;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#333333;" value="ParentViewState" vertex="1">
+          <mxGeometry height="28" width="180" x="310" y="82" as="geometry" />
+        </mxCell>
+        <mxCell id="5" parent="1" style="text;html=1;fontSize=11;align=center;verticalAlign=top;fillColor=none;strokeColor=none;fontColor=#555555;" value="isLoading: Bool&#xa;displayError: DisplayableError?" vertex="1">
+          <mxGeometry height="50" width="240" x="280" y="112" as="geometry" />
+        </mxCell>
+        <mxCell id="6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#CCCCCC;strokeWidth=1;arcSize=20;dashed=1;" value="" vertex="1">
+          <mxGeometry height="60" width="220" x="10" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="7" parent="1" style="text;html=1;fontSize=11;fontStyle=2;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#666666;" value="BindingParentStateOption&#xa;[.loading, .error, .all]" vertex="1">
+          <mxGeometry height="60" width="220" x="10" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="8" edge="1" parent="1" source="9" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" target="3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;arcSize=10;" value="" vertex="1">
+          <mxGeometry height="120" width="320" x="240" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="10" parent="1" style="text;html=1;fontSize=15;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#333333;" value="ChildViewState" vertex="1">
+          <mxGeometry height="28" width="160" x="320" y="302" as="geometry" />
+        </mxCell>
+        <mxCell id="11" parent="1" style="text;html=1;fontSize=11;align=center;verticalAlign=top;fillColor=none;strokeColor=none;fontColor=#555555;" value="isLoading: Bool&#xa;displayError: DisplayableError?&#xa;&#xa;init(states: parent, options: .all)" vertex="1">
+          <mxGeometry height="70" width="260" x="270" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="12" parent="1" style="text;html=1;fontSize=11;fontStyle=2;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#9673a6;" value="propagates&#xa;loading &amp; error" vertex="1">
+          <mxGeometry height="40" width="110" x="414" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;arcSize=10;" value="" vertex="1">
+          <mxGeometry height="120" width="170" x="40" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="14" parent="1" style="text;html=1;fontSize=15;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#333333;" value="Child B" vertex="1">
+          <mxGeometry height="28" width="120" x="65" y="302" as="geometry" />
+        </mxCell>
+        <mxCell id="15" parent="1" style="text;html=1;fontSize=11;align=center;verticalAlign=top;fillColor=none;strokeColor=none;fontColor=#555555;" value="options: .loading&#xa;(only propagates&#xa;loading state)" vertex="1">
+          <mxGeometry height="60" width="150" x="50" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="16" edge="1" parent="1" source="13" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;dashed=1;exitX=0.5;exitY=0;entryX=0.15;entryY=1;" target="3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;arcSize=10;" value="" vertex="1">
+          <mxGeometry height="120" width="170" x="590" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="18" parent="1" style="text;html=1;fontSize=15;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#333333;" value="Child C" vertex="1">
+          <mxGeometry height="28" width="120" x="615" y="302" as="geometry" />
+        </mxCell>
+        <mxCell id="19" parent="1" style="text;html=1;fontSize=11;align=center;verticalAlign=top;fillColor=none;strokeColor=none;fontColor=#555555;" value="options: .error&#xa;(only propagates&#xa;error state)" vertex="1">
+          <mxGeometry height="60" width="150" x="600" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="20" edge="1" parent="1" source="17" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;dashed=1;exitX=0.5;exitY=0;entryX=0.85;entryY=1;" target="3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="21" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="60" y="470" as="sourcePoint" />
+            <mxPoint x="110" y="470" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="22" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#666666;" value=".all (loading + error)" vertex="1">
+          <mxGeometry height="20" width="140" x="120" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="23" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;dashed=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="60" y="490" as="sourcePoint" />
+            <mxPoint x="110" y="490" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="24" parent="1" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#666666;" value="selective (.loading or .error)" vertex="1">
+          <mxGeometry height="20" width="180" x="120" y="480" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

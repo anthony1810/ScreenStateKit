@@ -63,34 +63,9 @@ https://github.com/anthony1810/ScreenStateKit.git
 
 ScreenStateKit promotes a clean architecture pattern for building features with three core components:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        SwiftUI View                         │
-│  - Owns @State for ViewState and ViewModel                  │
-│  - Binds state to ViewModel in .task modifier               │
-│  - Dispatches actions via viewModel.receive(action:)        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ binds & dispatches
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│              ViewModel / Store (Actor)                      │
-│  - Conforms to ScreenActionStore protocol                   │
-│  - Holds weak reference to state                            │
-│  - Processes actions with ActionLocker                      │
-│  - Updates state on @MainActor                              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ updates
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    ViewState (Observable)                   │
-│  - Extends ScreenState                                      │
-│  - @Observable @MainActor class                             │
-│  - Contains all UI state properties                         │
-│  - Inherits loading/error handling                          │
-└─────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/images/architecture-overview.png" alt="Architecture Overview — The Three Pillars" width="700"/>
+</p>
 
 ### The Three Pillars
 
@@ -205,6 +180,12 @@ actor FeatureViewStore: ScreenActionStore {
     }
 }
 ```
+
+**Action Flow:** Here's how actions are processed through `ActionLocker` and `LoadingTrackable`:
+
+<p align="center">
+  <img src="docs/images/action-flow.png" alt="Action Flow — ActionLocker &amp; LoadingTrackable" width="700"/>
+</p>
 
 ### 3. Build the View
 
@@ -337,6 +318,10 @@ await viewState?.updateState({ state in
 ## Parent State Binding
 
 `ScreenState` supports parent-child relationships, where loading and error states propagate upward from a child state to a parent.
+
+<p align="center">
+  <img src="docs/images/parent-child-binding.png" alt="Parent-Child State Binding" width="700"/>
+</p>
 
 ```swift
 public struct BindingParentStateOption: OptionSet, Sendable {
