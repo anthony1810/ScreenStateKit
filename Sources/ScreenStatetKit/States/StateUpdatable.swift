@@ -9,15 +9,14 @@ import SwiftUI
 
 @MainActor
 public protocol StateUpdatable {
-    
+
     func updateState(withAnimation animation: Animation?,
                      _ updateBlock: @MainActor (_ state: Self) -> Void)
 }
 
-
 extension StateUpdatable {
-    
-    public func updateState(withAnimation animation: Animation? = .smooth,
+
+    public func updateState(withAnimation animation: Animation? = .none,
                             _ updateBlock: @MainActor (_ state: Self) -> Void) {
         var transaction = Transaction()
         transaction.animation = animation
