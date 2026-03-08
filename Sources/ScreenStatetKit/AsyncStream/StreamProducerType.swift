@@ -23,9 +23,10 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
     
     typealias Continuation = AsyncStream<Element>.Continuation
     
-    public let withLatest: Bool
-    private var continuations: [String:Continuation] = [:]
+    private let storage = StreamStorage()
     private var latestElement: Element?
+    
+    public let withLatest: Bool
     
     /// Events stream
     public var stream: AsyncStream<Element> {
@@ -46,12 +47,11 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         if withLatest {
             latestElement = element
         }
-        continuations.values.forEach({ $0.yield(element) })
+        storage.emit(element: element)
     }
 
     public func finish() {
-        continuations.values.forEach({ $0.finish() })
-        continuations.removeAll()
+        storage.finish()
     }
     
     private func append(_ continuation: Continuation) {
@@ -59,11 +59,11 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         continuation.onTermination  = {[weak self] _ in
             self?.onTermination(forKey: key)
         }
-        continuations.updateValue(continuation, forKey: key)
+        storage.update(continuation, forKey: key)
     }
     
     private func removeContinuation(forKey key: String) {
-        continuations.removeValue(forKey: key)
+        storage.removeContinuation(forKey: key)
     }
 
     nonisolated private func onTermination(forKey key: String) {
@@ -72,6 +72,7 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         }
     }
     
+    @available(*, deprecated, renamed: "finish", message: "The Stream will be automatically finished when deallocated. No need to call it manually.")
     public nonisolated func nonIsolatedFinish() {
         Task(priority: .high) {
             await finish()
@@ -84,3 +85,33 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         }
     }
 }
+
+//MARK: - Storage
+extension StreamProducer {
+    private final class StreamStorage {
+        
+        private var continuations: [String:Continuation] = [:]
+        
+        func emit(element: Element) {
+            continuations.values.forEach({ $0.yield(element) })
+        }
+        
+        func update(_ continuation: Continuation, forKey key: String) {
+            continuations.updateValue(continuation, forKey: key)
+        }
+        
+        func removeContinuation(forKey key: String) {
+            continuations.removeValue(forKey: key)
+        }
+        
+        func finish() {
+            continuations.values.forEach({ $0.finish() })
+            continuations.removeAll()
+        }
+        
+        deinit {
+            finish()
+        }
+    }
+}
+

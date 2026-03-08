@@ -85,6 +85,27 @@ struct CancelBagTests {
         #expect(task1.isCancelled == true)
         #expect(task2.isCancelled == false)
     }
+    
+    @Test("watch task is copmpleted should remove it from cancelbag storage")
+    func testWatchTaskCompletedRemoveCancellerFromStorage() async throws {
+        let sut = CancelBag()
+
+        Task {
+            try await Task.sleep(for: .milliseconds(10))
+        }.store(in: sut)
+        
+        Task {
+            try await Task.sleep(for: .seconds(10))
+        }.store(in: sut)
+        
+        try await Task.sleep(for: .milliseconds(50))
+        
+        let count = await sut.count
+        let isEmpty = await sut.isEmpty
+        
+        #expect(count == 1)
+        #expect(isEmpty == false)
+    }
 }
 
 // MARK: - Helpers
