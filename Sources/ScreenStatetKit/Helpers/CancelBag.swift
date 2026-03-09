@@ -63,9 +63,9 @@ public actor CancelBag {
     }
     
     nonisolated fileprivate func append(canceller: Canceller) {
-        Task {
-            await insert(canceller)
-            await watch(canceller)
+        Task {[weak self] in
+            await self?.insert(canceller)
+            await self?.watch(canceller)
         }
     }
 }
