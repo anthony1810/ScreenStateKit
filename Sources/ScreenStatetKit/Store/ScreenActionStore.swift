@@ -15,12 +15,12 @@ public protocol ScreenActionStore: TypeNamed, Actor {
     /// Handles the given action and performs the corresponding logic.
     ///
     /// - Parameter action: The action to process.
-    func receive(action: Action)
+    func receive(action: Action) async
 }
 
 extension ScreenActionStore {
     
-    // Sends an action to the action store from a nonisolated context.
+    /// `ActionStore` receive an action from a nonisolated context.
     ///
     /// This method allows dispatching an `Action` to the actor without requiring
     /// the caller to `await`. Internally it creates a `Task` that forwards the
