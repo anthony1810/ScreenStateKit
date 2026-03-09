@@ -30,13 +30,24 @@ public actor CancelBag {
         storage.count
     }
     
-    public init() {
-        storage = .init()
+    public var policy: CancelStrategy {
+        storage.duplicatePolicy
+    }
+    
+    public init(duplicate policy: CancelStrategy) {
+        self.storage = .init(duplicatePolicy: policy)
     }
     
     /// Cancels all stored tasks and clears the bag.
     public func cancelAll() {
         storage.cancelAll()
+    }
+    
+    @available(*, deprecated, renamed: "cancelAll", message: "CancelBag will automatically cancel all tasks when deallocated. No need call this method directly.")
+    nonisolated public func cancelAllInTask() {
+        Task(priority: .high) {
+            await cancelAll()
+        }
     }
     
     /// Cancels the task associated with the given identifier.
@@ -69,10 +80,24 @@ public actor CancelBag {
     }
 }
 
+extension CancelBag {
+    
+    /// Defines how `CancelBag` handles tasks with the same identifier.
+    public enum CancelStrategy: Int8, Sendable {
+        
+        //// Cancel the currently executing task if a new task with the same identifier is added.
+        case cancelExisting
+        
+        /// Cancel the newly added task if a task with the same identifier already exists.
+        case cancelNew
+    }
+}
+
 //MARK: - Storage
 private final class CancelBagStorage {
     
-    private var cancellers: [AnyHashable: Canceller] = [:]
+    private var cancellers: [AnyHashable: Canceller]
+    let duplicatePolicy: CancelBag.CancelStrategy
     
     var isEmpty: Bool {
         cancellers.isEmpty
@@ -80,6 +105,11 @@ private final class CancelBagStorage {
     
     var count: Int {
         cancellers.count
+    }
+    
+    init(duplicatePolicy: CancelBag.CancelStrategy) {
+        self.cancellers = .init()
+        self.duplicatePolicy = duplicatePolicy
     }
     
     func cancelAll() {
@@ -100,7 +130,21 @@ private final class CancelBagStorage {
     }
     
     func insert(canceller: Canceller) {
-        cancel(forIdentifier: canceller.id)
+        guard let existing = cancellers[canceller.id] else {
+            _insert(canceller: canceller)
+            return
+        }
+        switch duplicatePolicy {
+        case .cancelExisting:
+            existing.cancel()
+            cancellers.removeValue(forKey: existing.id)
+            _insert(canceller: canceller)
+        case .cancelNew:
+            canceller.cancel()
+        }
+    }
+    
+    private func _insert(canceller: Canceller) {
         guard !canceller.isCancelled else { return }
         cancellers.updateValue(canceller, forKey: canceller.id)
     }

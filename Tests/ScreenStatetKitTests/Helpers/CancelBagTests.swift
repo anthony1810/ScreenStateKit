@@ -13,7 +13,7 @@ struct CancelBagTests {
 
     @Test("cancelAll cancels all stored tasks")
     func test_cancelAll_cancelsAllStoredTasks() async throws {
-        let sut = CancelBag()
+        let sut = CancelBag(duplicate: .cancelExisting)
 
         let task1 = Task {
             try await Task.sleep(for: .seconds(10))
@@ -39,7 +39,7 @@ struct CancelBagTests {
 
     @Test("cancel for identifier cancels specific task")
     func test_cancelForIdentifier_cancelsSpecificTask() async throws {
-        let sut = CancelBag()
+        let sut = CancelBag(duplicate: .cancelExisting)
 
         let task1 = Task {
             try await Task.sleep(for: .seconds(10))
@@ -65,7 +65,7 @@ struct CancelBagTests {
 
     @Test("store with same identifier cancels previous task")
     func test_store_withSameIdentifierCancelsPreviousTask() async throws {
-        let sut = CancelBag()
+        let sut = CancelBag(duplicate: .cancelExisting)
 
         let task1 = Task {
             try await Task.sleep(for: .seconds(10))
@@ -88,7 +88,7 @@ struct CancelBagTests {
     
     @Test("watch task is copmpleted should remove it from cancelbag storage")
     func testWatchTaskCompletedRemoveCancellerFromStorage() async throws {
-        let sut = CancelBag()
+        let sut = CancelBag(duplicate: .cancelExisting)
 
         Task {
             try await Task.sleep(for: .milliseconds(10))
@@ -112,6 +112,6 @@ struct CancelBagTests {
 
 extension CancelBagTests {
     private func makeSUT() -> CancelBag {
-        CancelBag()
+        CancelBag(duplicate: .cancelExisting)
     }
 }
