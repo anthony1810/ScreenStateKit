@@ -54,18 +54,17 @@ public actor CancelBag {
         storage.insert(canceller: canceller)
     }
     
-    /// Waits for the task to finish and removes it from storage.
-    ///
     /// This ensures completed tasks do not remain in the bag.
-    private func watch(_ canceller: Canceller) async {
-        await canceller.waitResult()
-        storage.remove(by: canceller.watchId)
+    /// - Parameter watchId: ``Canceller``'s `watchId`
+    private func removeCanceller(by watchId: UUID) async {
+        storage.remove(by: watchId)
     }
     
     nonisolated fileprivate func append(canceller: Canceller) {
         Task {[weak self] in
             await self?.insert(canceller)
-            await self?.watch(canceller)
+            await canceller.waitResult()
+            await self?.removeCanceller(by: canceller.watchId)
         }
     }
 }
