@@ -55,7 +55,7 @@ struct LoadmoreScreenStatesTests {
         sut.canExecuteLoadmore() // First set it to true
         #expect(sut.canShowLoadmore == true)
 
-        sut.ternimateLoadmoreView()
+        sut.terminateLoadMoreView()
 
         #expect(sut.canShowLoadmore == false)
     }

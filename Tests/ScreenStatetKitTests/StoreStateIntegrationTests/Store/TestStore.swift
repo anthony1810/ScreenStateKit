@@ -10,34 +10,27 @@ import ScreenStateKit
 extension StoreStateIntegrationTests {
     
     actor TestStore: ScreenActionStore {
-        private var state: TestScreenState?
+        private(set) var viewState: TestScreenState?
         private let actionLocker = ActionLocker.nonIsolated
         private(set) var fetchCount = 0
         
         func binding(state: TestScreenState) {
-            self.state = state
+            self.viewState = state
         }
         
-        nonisolated func receive(action: Action) {
-            Task {
-                await isolatedReceive(action: action)
-            }
-        }
-        
-        func isolatedReceive(action: Action) async {
+        func receive(action: Action) async throws {
             guard actionLocker.canExecute(action) else { return }
-            await state?.loadingStarted(action: action)
-            
+            defer { actionLocker.unlock(action) }
             do {
                 switch action {
                 case .fetchUser(let id):
                     fetchCount += 1
-                    await state?.updateState { state in
+                    await viewState?.updateState { state in
                         state.userName = "User \(id)"
                     }
                 case .fetchUserProfile:
                     fetchCount += 1
-                    await state?.updateState { state in
+                    await viewState?.updateState { state in
                         state.userName = "John Doe"
                         state.userAge = 25
                         state.userEmail = "john@example.com"
@@ -47,41 +40,44 @@ extension StoreStateIntegrationTests {
 
                 case .failingAction:
                     throw TestError.somethingWentWrong
+                case .faillingWithSilentError:
+                    throw TestError.silentError
                 }
             } catch {
-                await state?.showError(DisplayableError(message: error.localizedDescription))
+                throw DisplayableError(error: error)
             }
-            
-            actionLocker.unlock(action)
-            await state?.loadingFinished(action: action)
         }
         
-        enum Action: ActionLockable, LoadingTrackable {
+        enum Action: ActionLockable, LoadingTrackable, Hashable {
             case fetchUser(id: Int)
             case fetchUserProfile(id: Int)
             case slowFetch
             case failingAction
+            case faillingWithSilentError
 
             var canTrackLoading: Bool { true }
-
-            var lockKey: AnyHashable {
-                switch self {
-                case .fetchUser:
-                    return "fetchUser"
-                case .fetchUserProfile:
-                    return "fetchUserProfile"
-                case .slowFetch:
-                    return "slowFetch"
-                case .failingAction:
-                    return "failingAction"
-                }
-            }
         }
         
-        enum TestError: LocalizedError {
+        enum TestError: LocalizedError, NonPresentableError {
             case somethingWentWrong
+            case silentError
+            var errorDescription: String? {
+                switch self {
+                case .somethingWentWrong:
+                    "Something went wrong"
+                case .silentError:
+                    "The silent error"
+                }
+            }
             
-            var errorDescription: String? { "Something went wrong" }
+            var isSilent: Bool {
+                switch self {
+                case .somethingWentWrong:
+                    false
+                case .silentError:
+                    true
+                }
+            }
         }
     }
     

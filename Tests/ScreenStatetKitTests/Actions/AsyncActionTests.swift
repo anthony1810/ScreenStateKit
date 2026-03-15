@@ -10,7 +10,6 @@ import Testing
 struct AsyncActionTests {
 
     // MARK: - asyncExecute() Tests
-
     @Test("asyncExecute executes wrapped action and returns output")
     func test_asyncExecute_executesWrappedActionAndReturnsOutput() async throws {
         let sut = AsyncActionGet<Int> {

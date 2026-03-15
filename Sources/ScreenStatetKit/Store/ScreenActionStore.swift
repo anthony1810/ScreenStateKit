@@ -10,19 +10,25 @@ import Foundation
 
 public protocol ScreenActionStore: TypeNamed, Actor {
     
-    associatedtype Action: Sendable & ActionLockable
+    associatedtype ViewState: ScreenState
+    associatedtype Action: Sendable & Hashable
     
-    /// Handles the given action and performs the corresponding logic.
-    ///
+    /// Reference to the view state. Conforming types should store this as `weak`.
+    var viewState: ViewState? { get }
+    
+    /// Handles an incoming action and performs the corresponding logic.
     /// - Parameter action: The action to process.
-    func receive(action: Action) async
+    /// - Throws: An error if the action handling fails.
+    func receive(action: Action) async throws
 }
 
 extension ScreenActionStore {
     
-    /// `ActionStore` receive an action from a nonisolated context.
+    public var viewState: ScreenState? { .none }
+    
+    /// Dispatches an action from a non-isolated context.
     ///
-    /// This method allows dispatching an `Action` to the actor without requiring
+    /// This method allows sending an `Action` to the actor without requiring
     /// the caller to `await`. Internally it creates a `Task` that forwards the
     /// action to `receive(action:)`.
     ///
@@ -33,24 +39,52 @@ extension ScreenActionStore {
     ///
     /// - Parameters:
     ///   - action: The action to send to the receiver.
-    ///   - canceller: An optional `CancelBag` used to manage the lifetime of the
-    ///     created task. If provided, the task will be stored using `action`
-    ///     as its identifier.
+    ///   - bag: Optional `CancelBag` used to manage the lifetime of the created task.
     ///
-    /// - Tip: If the ``CancelBag`` is tied to the lifetime of a view, its tasks will be
-    ///   cancelled automatically when the view is destroyed. Otherwise, the tasks
-    ///   are guaranteed to complete before the action store is deallocated.
+    /// - Returns: The stored `AnyTask`.
     ///
-    /// - Note: The `Action` type must conform to `Hashable` so it can be used
-    ///   as a unique identifier for task cancellation.
-    nonisolated
+    /// - Tip: If the ``CancelBag`` is tied to the lifetime of a view, its tasks
+    ///   will be cancelled automatically when the view is destroyed.
+    ///
+    /// - Note: `Action` must conform to `Hashable` so it can be used as an
+    ///   identifier for task cancellation.
+    @discardableResult nonisolated
     public func nonisolatedReceive(
         action: Action,
         canceller: CancelBag? = .none
-    )
-    where Action: Hashable {
-        Task {
-            await receive(action: action)
-        }.store(in: canceller, withIdentifier: action)
+    ) -> AnyTask
+    where Action: Hashable, Action: LoadingTrackable {
+        if #available(iOS 26.0, *) {
+            Task.immediate {
+                await dispatch(action: action)
+            }
+            .store(in: canceller, withIdentifier: action)
+        } else {
+            Task {
+                await dispatch(action: action)
+            }
+            .store(in: canceller, withIdentifier: action)
+        }
+    }
+    
+    nonisolated
+    private func dispatch(action: Action) async
+    where Action: Hashable, Action: LoadingTrackable {
+        await viewState?.loadingStarted(action: action)
+        do {
+            try await receive(action: action)
+        } catch let displayable as DisplayableError where !displayable.isSilent {
+            await viewState?.showError(displayable)
+        } catch {
+            printDebug(error.localizedDescription)
+        }
+        await viewState?.loadingFinished(action: action)
+    }
+    
+    nonisolated
+    func printDebug(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        print(message())
+        #endif
     }
 }

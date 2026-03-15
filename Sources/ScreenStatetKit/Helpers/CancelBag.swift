@@ -18,7 +18,7 @@ import SwiftUI
 ///
 /// If the ``CancelBag`` is tied to the lifetime of a view or object, all stored
 /// tasks will be cancelled when the bag is deallocated.
-public actor CancelBag {
+public actor CancelBag: ObservableObject {
 
     private let storage: CancelBagStorage
     
@@ -30,12 +30,12 @@ public actor CancelBag {
         storage.count
     }
     
-    public var policy: CancelStrategy {
+    public var policy: DuplicatePolicy {
         storage.duplicatePolicy
     }
     
-    public init(duplicate policy: CancelStrategy) {
-        self.storage = .init(duplicatePolicy: policy)
+    public init(onDuplicate policy: DuplicatePolicy) {
+        self.storage = .init(onDuplicate: policy)
     }
     
     /// Cancels all stored tasks and clears the bag.
@@ -57,12 +57,12 @@ public actor CancelBag {
         storage.cancel(forIdentifier: identifier)
     }
     
-    /// Appends a canceller to the bag.
+    /// Appends a task to the bag.
     ///
     /// This method is nonisolated so tasks can store themselves without
     /// requiring the caller to `await`.
-    private func insert(_ canceller: Canceller) {
-        storage.insert(canceller: canceller)
+    private func insert(_ task: AnyTask) {
+        storage.insert(task: task)
     }
     
     /// This ensures completed tasks do not remain in the bag.
@@ -71,11 +71,19 @@ public actor CancelBag {
         storage.remove(by: watchId)
     }
     
-    nonisolated fileprivate func append(canceller: Canceller) {
-        Task {[weak self] in
-            await self?.insert(canceller)
-            await canceller.waitResult()
-            await self?.removeCanceller(by: canceller.watchId)
+    nonisolated fileprivate func append(task: AnyTask) {
+        if #available(iOS 26.0, *) {
+            Task.immediate {[weak self] in
+                await self?.insert(task)
+                await task.waitComplete()
+                await self?.removeCanceller(by: task.watchId)
+            }
+        } else {
+            Task {[weak self] in
+                await self?.insert(task)
+                await task.waitComplete()
+                await self?.removeCanceller(by: task.watchId)
+            }
         }
     }
 }
@@ -83,7 +91,7 @@ public actor CancelBag {
 extension CancelBag {
     
     /// Defines how `CancelBag` handles tasks with the same identifier.
-    public enum CancelStrategy: Int8, Sendable {
+    public enum DuplicatePolicy: Int8, Sendable {
         
         //// Cancel the currently executing task if a new task with the same identifier is added.
         case cancelExisting
@@ -96,57 +104,56 @@ extension CancelBag {
 //MARK: - Storage
 private final class CancelBagStorage {
     
-    private var cancellers: [AnyHashable: Canceller]
-    let duplicatePolicy: CancelBag.CancelStrategy
+    private var runningTasks: [AnyHashable: AnyTask]
+    let duplicatePolicy: CancelBag.DuplicatePolicy
     
     var isEmpty: Bool {
-        cancellers.isEmpty
+        runningTasks.isEmpty
     }
     
     var count: Int {
-        cancellers.count
+        runningTasks.count
     }
     
-    init(duplicatePolicy: CancelBag.CancelStrategy) {
-        self.cancellers = .init()
-        self.duplicatePolicy = duplicatePolicy
+    init(onDuplicate policy: CancelBag.DuplicatePolicy) {
+        self.runningTasks = .init()
+        self.duplicatePolicy = policy
     }
     
     func cancelAll() {
-        let runningTasks = cancellers.values.filter({ !$0.isCancelled })
-        runningTasks.forEach{ $0.cancel() }
-        cancellers.removeAll()
+        runningTasks.values.forEach{ $0.cancel() }
+        runningTasks.removeAll()
     }
     
     func cancel(forIdentifier identifier: AnyHashable) {
-        guard let task = cancellers[identifier] else { return }
+        guard let task = runningTasks[identifier] else { return }
         task.cancel()
-        cancellers.removeValue(forKey: identifier)
+        runningTasks.removeValue(forKey: identifier)
     }
     
     func remove(by watchId: UUID) {
-        guard let key = cancellers.first(where: { $0.value.watchId == watchId })?.key else { return }
-        cancellers.removeValue(forKey: key)
+        guard let key = runningTasks.first(where: { $0.value.watchId == watchId })?.key else { return }
+        runningTasks.removeValue(forKey: key)
     }
     
-    func insert(canceller: Canceller) {
-        guard let existing = cancellers[canceller.id] else {
-            _insert(canceller: canceller)
+    func insert(task: AnyTask) {
+        guard let existing = runningTasks[task.storageKey] else {
+            _insert(task: task)
             return
         }
         switch duplicatePolicy {
         case .cancelExisting:
             existing.cancel()
-            cancellers.removeValue(forKey: existing.id)
-            _insert(canceller: canceller)
+            runningTasks.removeValue(forKey: existing.storageKey)
+            _insert(task: task)
         case .cancelNew:
-            canceller.cancel()
+            task.cancel()
         }
     }
     
-    private func _insert(canceller: Canceller) {
-        guard !canceller.isCancelled else { return }
-        cancellers.updateValue(canceller, forKey: canceller.id)
+    private func _insert(task: AnyTask) {
+        guard !task.isCancelled else { return }
+        runningTasks.updateValue(task, forKey: task.storageKey)
     }
     
     deinit {
@@ -155,20 +162,25 @@ private final class CancelBagStorage {
 }
 
 
-//MARK: - Canceller
-private struct Canceller {
+//MARK: - AnyTask
+public struct AnyTask: Sendable {
     
-    let cancel: @Sendable () -> Void
-    let waitResult: @Sendable () async -> Void
-    let id: AnyHashable
+    public typealias Identifier = Hashable & Sendable
+    public let cancel: @Sendable () -> Void
+    public let waitComplete: @Sendable () async -> Void
+    public var isCancelled: Bool { isCancelledBock() }
+    public let id: any Identifier
+    
     let watchId: UUID
-    var isCancelled: Bool { isCancelledBock() }
-    
     private let isCancelledBock: @Sendable () -> Bool
     
-    init<S,E>(_ task: Task<S,E>, identifier: AnyHashable) {
+    var storageKey: AnyHashable {
+        .init(self.id)
+    }
+    
+    init<S,E>(_ task: Task<S,E>, identifier: any Identifier) {
         cancel = { task.cancel() }
-        waitResult = { _ = await task.result }
+        waitComplete = { _ = await task.result }
         isCancelledBock = { task.isCancelled }
         id = identifier
         watchId = .init()
@@ -178,13 +190,20 @@ private struct Canceller {
 //MARK: - Short Path
 extension Task {
     
-    public func store(in bag: CancelBag?) {
-        let canceller = Canceller(self, identifier: .init(UUID()))
-        bag?.append(canceller: canceller)
+    @discardableResult
+    public func store(in bag: CancelBag?) -> AnyTask {
+        let anyTask = AnyTask(self, identifier: UUID())
+        bag?.append(task: anyTask)
+        return anyTask
     }
     
-    public func store(in bag: CancelBag?, withIdentifier identifier: any Hashable) {
-        let canceller = Canceller(self, identifier: .init(identifier))
-        bag?.append(canceller: canceller)
+    @discardableResult
+    public func store<Identifier>(in bag: CancelBag?,
+                                  withIdentifier identifier: Identifier)
+    -> AnyTask where Identifier: Hashable, Identifier: Sendable {
+        let anyTask = AnyTask(self, identifier: identifier)
+        bag?.append(task: anyTask)
+        return anyTask
     }
 }
+
