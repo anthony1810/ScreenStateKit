@@ -36,12 +36,12 @@ class StoreStateIntegrationTests {
         await withMainSerialExecutor {
             let (state, sut) = await makeSUT()
 
-            let task = Task { await sut.nonisolatedReceive(action: .slowFetch).waitComplete() }
+            let task = sut.nonisolatedReceive(action: .slowFetch)
             await Task.megaYield()
 
             #expect(state.isLoading == true)
 
-            await task.value
+            await task.waitComplete()
 
             #expect(state.isLoading == false)
         }

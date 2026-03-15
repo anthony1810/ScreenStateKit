@@ -66,8 +66,7 @@ extension ScreenActionStore {
             .store(in: canceller, withIdentifier: action)
         }
     }
-    
-    nonisolated
+
     private func dispatch(action: Action) async
     where Action: Hashable, Action: LoadingTrackable {
         await viewState?.loadingStarted(action: action)
@@ -81,7 +80,6 @@ extension ScreenActionStore {
         await viewState?.loadingFinished(action: action)
     }
     
-    nonisolated
     func printDebug(_ message: @autoclosure () -> String) {
         #if DEBUG
         print(message())
