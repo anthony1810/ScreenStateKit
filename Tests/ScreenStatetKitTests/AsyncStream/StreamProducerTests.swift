@@ -14,20 +14,26 @@ struct StreamProducerTests {
     
     @Test("emit delivers element to subscriber")
     func test_emit_deliversToSubscriber() async {
-        let sut = StreamProducer<Int>(withLatest: false)
-        
-        Task {
-            try await Task.sleep(for: .milliseconds(50))
+        await withMainSerialExecutor {
+            let sut = StreamProducer<Int>(withLatest: false)
+
+            let received = LockIsolated<Int?>(nil)
+
+            let task = Task {
+                for await element in await sut.stream {
+                    received.setValue(element)
+                }
+            }
+
+            await Task.yield()
+
             await sut.emit(element: 42)
             await sut.finish()
-        }
-        
-        var received: Int?
-        for await element in await sut.stream {
-            received = element
-        }
 
-        #expect(received == 42)
+            await task.value
+
+            #expect(received.value == 42)
+        }
     }
 
     @Test("emit delivers element to multiple subscribers")
