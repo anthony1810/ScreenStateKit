@@ -30,7 +30,7 @@ extension StoreStateIntegrationTests {
                 await state?.updateState { state in
                     state.items = Array(1...10)
                 }
-                await state?.ternimateLoadmoreView()
+                await state?.terminateLoadMoreView()
 
             case .loadMoreWithPagination(let page):
                 let items = makeItemsForPage(page)
@@ -40,7 +40,7 @@ extension StoreStateIntegrationTests {
                     state.currentPage = page
                     state.hasMorePages = hasMore
                 }
-                await state?.ternimateLoadmoreView()
+                await state?.terminateLoadMoreView()
             }
 
             actionLocker.unlock(action)

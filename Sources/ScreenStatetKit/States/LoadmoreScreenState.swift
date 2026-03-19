@@ -15,7 +15,7 @@ open class LoadmoreScreenState: ScreenState {
     public private(set) var canShowLoadmore: Bool = false
     public private(set) var didLoadAllData: Bool = false
     
-    public func ternimateLoadmoreView() {
+    public func terminateLoadMoreView() {
         withAnimation {
             self.canShowLoadmore = false
         }
