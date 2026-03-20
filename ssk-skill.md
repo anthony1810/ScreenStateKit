@@ -16,7 +16,7 @@ Every feature has three components:
 2. **Store** (actor conforming to `ScreenActionStore`) - Processes actions, updates state
 3. **View** (SwiftUI) - Binds state, dispatches actions to store
 
-The flow: **View** dispatches actions to **Store** via `receive(action:)` → **Store** processes action → **Store** updates **State** → **View** re-renders via `@Observable`.
+The flow: **View** dispatches actions to **Store** via `nonisolatedReceive(action:)` → framework's `dispatch` handles loading/error → **Store**'s `receive(action:) async throws` processes action → **Store** updates **State** → **View** re-renders via `@Observable`.
 
 ---
 
@@ -86,7 +86,7 @@ Additional properties and methods:
 - `didLoadAllData: Bool` (read-only) - Whether all pages have been fetched
 - `canExecuteLoadmore()` - Enables the loadmore indicator (no-op if `didLoadAllData` is true)
 - `updateDidLoadAllData(_ didLoadAllData: Bool)` - Sets the exhaustion flag and toggles loadmore visibility
-- `ternimateLoadmoreView()` - Hides the load-more indicator
+- `terminateLoadMoreView()` - Hides the load-more indicator
 
 ### Parent-Child State Binding
 
@@ -153,7 +153,7 @@ import ScreenStateKit
 
 actor FeatureViewStore: ScreenActionStore {
     // MARK: - State
-    private weak var viewState: FeatureViewState?
+    private(set) weak var viewState: FeatureViewState?
 
     // MARK: - Dependencies
     private let actionLocker = ActionLocker.nonIsolated  // Use .nonIsolated inside actor
@@ -184,35 +184,24 @@ actor FeatureViewStore: ScreenActionStore {
         self.viewState = state
     }
 
-    nonisolated func receive(action: Action) {
-        Task {
-            await isolatedReceive(action: action)
-        }
-    }
-
     // MARK: - Action Processing
-    private func isolatedReceive(action: Action) async {
+    // The framework provides `nonisolatedReceive(action:)` and `dispatch(action:)`
+    // automatically. You only implement `receive(action:) async throws`.
+    // - `nonisolatedReceive` → spawns Task → calls `dispatch` → handles loading/error → calls YOUR `receive`
+    // - `receive` is where YOUR business logic goes. Just throw on error — `dispatch` catches it.
+
+    func receive(action: Action) async throws {
         guard actionLocker.canExecute(action) else { return }
-        await viewState?.loadingStarted(action: action)
+        defer { actionLocker.unlock(action) }
 
-        do {
-            switch action {
-            case .fetchItems:
-                try await fetchItems()
-            case .loadMore:
-                try await loadMoreItems()
-            case .deleteItem(let id):
-                try await deleteItem(id: id)
-            }
-        } catch let error as LocalizedError {
-            await viewState?.showError(error)
-        } catch {
-            // Log non-LocalizedError silently
-            debugPrint("\(declaredName): \(error.localizedDescription)")
+        switch action {
+        case .fetchItems:
+            try await fetchItems()
+        case .loadMore:
+            try await loadMoreItems()
+        case .deleteItem(let id):
+            try await deleteItem(id: id)
         }
-
-        actionLocker.unlock(action)
-        await viewState?.loadingFinished(action: action)
     }
 
     // MARK: - Action Implementations
@@ -230,7 +219,7 @@ actor FeatureViewStore: ScreenActionStore {
         await viewState?.updateState { state in
             state.items = currentItems + newItems
         }
-        await viewState?.ternimateLoadmoreView()
+        await viewState?.terminateLoadMoreView()
     }
 
     private func deleteItem(id: String) async throws {
@@ -246,62 +235,60 @@ actor FeatureViewStore: ScreenActionStore {
 ### Key Store Patterns
 
 **ActionLocker variants:**
-- `ActionLocker.nonIsolated` - Use inside an actor (the actor already provides isolation)
-- `ActionLocker.isolated` - Use when shared across multiple concurrent contexts
+- `ActionLocker.nonIsolated` - Use inside an actor (the actor already provides isolation). Synchronous lock/unlock — no cross-actor hops.
+- `ActionLocker.isolated` - Use when shared across multiple concurrent contexts outside an actor
 
-**Action processing sequence (ALWAYS follow this order):**
+**Action processing — what the framework does vs what you do:**
+
+The framework's `dispatch(action:)` method (provided by `ScreenActionStore` protocol) handles:
+1. `await viewState?.loadingStarted(action: action)` - Start loading if trackable
+2. Calls YOUR `receive(action:) async throws`
+3. On error: `await viewState?.showError(DisplayableError(error: error))` — unless error conforms to `NonPresentableError` and `isSilent` is true
+4. `await viewState?.loadingFinished(action: action)` - Stop loading if trackable
+
+YOUR `receive(action:) async throws` should:
 1. `guard actionLocker.canExecute(action) else { return }` - Prevent duplicates
-2. `await viewState?.loadingStarted(action: action)` - Start loading if trackable
-3. Execute the action logic in a do-catch
-4. `actionLocker.unlock(action)` - Release the lock
-5. `await viewState?.loadingFinished(action: action)` - Stop loading if trackable
+2. `defer { actionLocker.unlock(action) }` - Release lock when done
+3. Execute the action logic — just `throw` on error, `dispatch` catches it
 
-**Error handling pattern:**
+**Error handling — silent errors with NonPresentableError:**
 ```swift
-do {
-    // action logic
-} catch let error as LocalizedError {
-    await viewState?.showError(error)
-} catch {
-    debugPrint("\(declaredName): \(error.localizedDescription)")
+// Errors that should NOT show an alert to the user
+struct SilentError: NonPresentableError {
+    var isSilent: Bool { true }
 }
-```
 
-Or with DisplayableError directly:
-```swift
-} catch {
-    await viewState?.showError(DisplayableError(message: error.localizedDescription))
-}
-```
-
-**Actions with associated values need custom lockKey:**
-```swift
-enum Action: ActionLockable, LoadingTrackable {
-    case fetchUser(id: Int)
-    case deleteUser(id: Int)
-
-    var lockKey: AnyHashable {
-        switch self {
-        case .fetchUser: return "fetchUser"
-        case .deleteUser: return "deleteUser"
-        }
+// In your receive, loadMore errors can be silent:
+case .loadMore:
+    do {
+        try await loadMoreItems()
+    } catch {
+        await handleLoadMoreError(error)
+        throw SilentError()  // dispatch won't show alert
     }
-
-    var canTrackLoading: Bool { true }
-}
 ```
 
-Actions that are `Hashable` without associated values get `lockKey` automatically via the protocol extension.
+**Action `Hashable` requirement:**
+Actions must conform to `Hashable`. This provides automatic `lockKey` generation — no manual `lockKey` computed property needed. The framework auto-synthesizes lockKey from the Hashable conformance.
 
-**Exposing isolatedReceive for testing and pull-to-refresh:**
+**`nonisolatedReceive` vs `receive`:**
+
+| Method | Who calls it | What it does |
+|--------|-------------|--------------|
+| `nonisolatedReceive(action:)` | View (fire-and-forget) | Spawns Task → calls `dispatch` → handles loading/error → calls `receive` |
+| `receive(action:) async throws` | Framework's `dispatch`, or tests directly | YOUR business logic. Just throw on error. |
+
 ```swift
-// Make isolatedReceive internal (not private) so tests can call it directly
-func isolatedReceive(action: Action) async { ... }
+// In view — fire and forget (goes through dispatch):
+viewStore.nonisolatedReceive(action: .fetchItems)
 
-// In view, use for pull-to-refresh:
+// In view — pull-to-refresh (direct, caller handles error):
 .refreshable {
-    await viewStore.isolatedReceive(action: .fetchItems)
+    try? await viewStore.receive(action: .fetchItems)
 }
+
+// In tests — direct assertion:
+try await sut.store.receive(action: .loadItems)
 ```
 
 ---
@@ -331,7 +318,7 @@ struct FeatureView: View {
         .onShowError($viewState.displayError)
         .task {
             await viewStore.binding(state: viewState)
-            viewStore.receive(action: .fetchItems)
+            viewStore.nonisolatedReceive(action: .fetchItems)
         }
     }
 
@@ -353,12 +340,12 @@ struct FeatureView: View {
             if viewState.canShowLoadmore {
                 RMLoadmoreView(states: viewState)
                     .onAppear {
-                        viewStore.receive(action: .loadMore)
+                        viewStore.nonisolatedReceive(action: .loadMore)
                     }
             }
         }
         .refreshable {
-            await viewStore.isolatedReceive(action: .fetchItems)
+            try? await viewStore.receive(action: .fetchItems)
         }
     }
 }
@@ -367,13 +354,14 @@ struct FeatureView: View {
 ### View Integration Rules
 
 1. **Bind state to store in `.task`**: Always call `await viewStore.binding(state: viewState)` first
-2. **Dispatch initial action after binding**: `viewStore.receive(action: .fetchItems)`
-3. **Apply view modifiers**:
+2. **Dispatch initial action after binding**: `viewStore.nonisolatedReceive(action: .fetchItems)` (fire-and-forget, goes through `dispatch`)
+3. **Pull-to-refresh**: Use `try? await viewStore.receive(action: .refresh)` (direct call, bypasses `dispatch`)
+4. **Apply view modifiers**:
    - `.onShowLoading($viewState.isLoading)` - Centered ProgressView overlay
    - `.onShowBlockLoading($viewState.isLoading, subtitles: "Saving...")` - Full-screen blocking overlay
    - `.onShowError($viewState.displayError)` - Alert for errors
    - `.placeholder(viewState.snapshot)` - Skeleton loading with `.redacted()`
-4. **RMLoadmoreView**: Use for pagination, triggers `canExecuteLoadmore()` on disappear
+5. **RMLoadmoreView**: Use for pagination, triggers `canExecuteLoadmore()` on disappear
 
 ### View Modifiers Reference
 
@@ -464,13 +452,13 @@ struct ItemListView: View {
                 EditItemView(item: item)
             }
             .onCreated { [weak viewStore] in
-                viewStore?.receive(action: .refreshItems)
+                viewStore?.nonisolatedReceive(action: .refreshItems)
             }
             .onEdited { [weak viewStore] in
-                viewStore?.receive(action: .refreshItems)
+                viewStore?.nonisolatedReceive(action: .refreshItems)
             }
             .onDeleted { [weak viewStore] in
-                viewStore?.receive(action: .refreshItems)
+                viewStore?.nonisolatedReceive(action: .refreshItems)
             }
     }
 }
@@ -548,22 +536,20 @@ let producer = StreamProducer<Int>(withLatest: false)
 
 ```swift
 producer.nonIsolatedEmit(.someEvent)
-producer.nonIsolatedFinish()
+producer.nonIsolatedFinish()  // DEPRECATED in 1.1.0 — use `await producer.finish()` instead
 ```
+
+> **Note:** `nonIsolatedFinish()` is deprecated. Prefer `await producer.finish()`. StreamProducer now uses an internal `StreamStorage` class with `deinit` cleanup, so explicit finish calls are often unnecessary.
 
 ---
 
 ## CancelBag (Task Lifecycle Management)
 
-Actor that stores and manages Task cancellation by identifier.
+Actor that stores and manages Task cancellation by identifier. Supports duplicate policies and auto-removal of completed tasks.
 
 ```swift
 actor MyStore {
     private let cancelBag = CancelBag()
-
-    deinit {
-        cancelBag.cancelAllInTask()  // Non-isolated cleanup in deinit
-    }
 
     func startObserving() {
         Task.detached { [weak self] in
@@ -580,13 +566,40 @@ actor MyStore {
 }
 ```
 
+### CancelBag Init with DuplicatePolicy
+
+```swift
+// Default: .cancelExisting — storing a task with the same identifier cancels the previous one
+let cancelBag = CancelBag()  // or CancelBag(duplicatePolicy: .cancelExisting)
+
+// Alternative: .cancelNew — if a task with the same identifier exists, the NEW task is cancelled
+let cancelBag = CancelBag(duplicatePolicy: .cancelNew)
+```
+
+### AnyTask (Public Task Handle)
+
+`store(in:withIdentifier:)` returns an `AnyTask` — a public, type-erased task handle:
+
+```swift
+let task: AnyTask = myTask.store(in: cancelBag, withIdentifier: "sync")
+
+// Wait for task completion
+await task.waitComplete()
+
+// Check cancellation
+if task.isCancelled { ... }
+
+// Cancel the task
+task.cancel()
+```
+
 ### Key Methods
 
-- `task.store(in: cancelBag)` - Store with auto-generated identifier
-- `task.store(in: cancelBag, withIdentifier: "id")` - Store with specific identifier (cancels any existing task with same id)
+- `task.store(in: cancelBag)` → `AnyTask` - Store with auto-generated identifier
+- `task.store(in: cancelBag, withIdentifier: "id")` → `AnyTask` - Store with specific identifier
 - `await cancelBag.cancelAll()` - Cancel all stored tasks
 - `await cancelBag.cancel(forIdentifier: "id")` - Cancel specific task
-- `cancelBag.cancelAllInTask()` - Non-isolated version for `deinit`
+- Completed tasks are **automatically removed** from the bag — no manual cleanup needed
 
 ### Common Pattern: Observing Streams with CancelBag
 
@@ -605,16 +618,45 @@ Use `#function` as identifier to auto-cancel if the method is called again.
 
 ---
 
-## DisplayableError
+## DisplayableError & NonPresentableError
+
+### DisplayableError
 
 ```swift
 public struct DisplayableError: LocalizedError, Identifiable, Hashable {
-    public let id: String        // Auto-generated UUID
+    public let id: String            // Auto-generated UUID
     public let message: String
+    public let originalError: Error? // The underlying error that caused this
+    public let isSilent: Bool        // If true, dispatch won't show alert
     public var errorDescription: String? { message }
 
     public init(message: String)
+    public init(error: Error)  // Wraps any Error, preserving originalError. Checks NonPresentableError for isSilent.
 }
+```
+
+### NonPresentableError
+
+Protocol for errors that should NOT trigger a user-visible alert. The framework's `dispatch` checks this before calling `showError`.
+
+```swift
+public protocol NonPresentableError: Error {
+    var isSilent: Bool { get }
+}
+
+// Example: loadMore errors should be silent
+struct LoadMoreError: NonPresentableError {
+    var isSilent: Bool { true }
+}
+
+// In your receive:
+case .loadMore:
+    do {
+        try await loadMoreItems()
+    } catch {
+        await viewState?.terminateLoadMoreView()
+        return  // Don't rethrow — or throw a NonPresentableError
+    }
 ```
 
 ---
@@ -641,17 +683,13 @@ import Foundation
 import ScreenStateKit
 
 actor UserListViewStore: ScreenActionStore {
-    private weak var viewState: UserListViewState?
+    private(set) weak var viewState: UserListViewState?
     private let actionLocker = ActionLocker.nonIsolated
     private let cancelBag = CancelBag()
     private let userService: UserServiceProtocol
 
     init(userService: UserServiceProtocol) {
         self.userService = userService
-    }
-
-    deinit {
-        cancelBag.cancelAllInTask()
     }
 
     enum Action: ActionLockable, LoadingTrackable, Hashable {
@@ -674,33 +712,20 @@ actor UserListViewStore: ScreenActionStore {
         self.viewState = state
     }
 
-    nonisolated func receive(action: Action) {
-        Task { await isolatedReceive(action: action) }
-    }
-
-    func isolatedReceive(action: Action) async {
+    func receive(action: Action) async throws {
         guard actionLocker.canExecute(action) else { return }
-        await viewState?.loadingStarted(action: action)
+        defer { actionLocker.unlock(action) }
 
-        do {
-            switch action {
-            case .fetchUsers:
-                try await fetchUsers()
-            case .loadMore:
-                try await loadMoreUsers()
-            case .search(let query):
-                try await searchUsers(query: query)
-            case .deleteUser(let id):
-                try await deleteUser(id: id)
-            }
-        } catch let error as LocalizedError {
-            await viewState?.showError(error)
-        } catch {
-            debugPrint("\(declaredName): \(error.localizedDescription)")
+        switch action {
+        case .fetchUsers:
+            try await fetchUsers()
+        case .loadMore:
+            try await loadMoreUsers()
+        case .search(let query):
+            try await searchUsers(query: query)
+        case .deleteUser(let id):
+            try await deleteUser(id: id)
         }
-
-        actionLocker.unlock(action)
-        await viewState?.loadingFinished(action: action)
     }
 
     private func fetchUsers() async throws {
@@ -719,7 +744,7 @@ actor UserListViewStore: ScreenActionStore {
             state.users = currentUsers + result.users
         }
         await viewState?.updateDidLoadAllData(result.isLastPage)
-        await viewState?.ternimateLoadmoreView()
+        await viewState?.terminateLoadMoreView()
     }
 
     private func searchUsers(query: String) async throws {
@@ -760,7 +785,7 @@ struct UserListView: View {
                     UserRow(user: user)
                         .swipeActions {
                             Button("Delete", role: .destructive) {
-                                viewStore.receive(action: .deleteUser(id: user.id))
+                                viewStore.nonisolatedReceive(action: .deleteUser(id: user.id))
                             }
                         }
                 }
@@ -768,16 +793,16 @@ struct UserListView: View {
                 if viewState.canShowLoadmore {
                     RMLoadmoreView(states: viewState)
                         .onAppear {
-                            viewStore.receive(action: .loadMore)
+                            viewStore.nonisolatedReceive(action: .loadMore)
                         }
                 }
             }
             .searchable(text: $viewState.searchQuery)
             .onChange(of: viewState.searchQuery) { _, newValue in
-                viewStore.receive(action: .search(query: newValue))
+                viewStore.nonisolatedReceive(action: .search(query: newValue))
             }
             .refreshable {
-                await viewStore.isolatedReceive(action: .fetchUsers)
+                try? await viewStore.receive(action: .fetchUsers)
             }
             .navigationTitle("Users")
         }
@@ -785,7 +810,7 @@ struct UserListView: View {
         .onShowError($viewState.displayError)
         .task {
             await viewStore.binding(state: viewState)
-            viewStore.receive(action: .fetchUsers)
+            viewStore.nonisolatedReceive(action: .fetchUsers)
         }
     }
 }
@@ -995,25 +1020,25 @@ Every test starts by calling `makeSUT()`. It creates the store, state, spy, wire
     }
 ```
 
-#### Pattern 2: Success Path (using `isolatedReceive`)
+#### Pattern 2: Success Path (using `receive` directly)
 
-Use `isolatedReceive(action:)` for deterministic, synchronous-style tests. This calls the actor method directly and `await`s its completion.
+Use `try await store.receive(action:)` for deterministic, synchronous-style tests. This calls the actor method directly and awaits its completion.
 
 ```swift
-    @Test func loadItems_deliversItemsOnLoaderSuccess() async {
+    @Test func loadItems_deliversItemsOnLoaderSuccess() async throws {
         let sut = await makeSUT()
         let expectedItems = [uniqueItem()]
 
         sut.loader.complete(with: .success(expectedItems))
-        await sut.store.isolatedReceive(action: .loadItems)
+        try await sut.store.receive(action: .loadItems)
 
         #expect(sut.state.items == expectedItems)
     }
 ```
 
-#### Pattern 3: Error Path (using `receive` + `withMainSerialExecutor`)
+#### Pattern 3: Error Path (using `nonisolatedReceive` + `withMainSerialExecutor`)
 
-Use `receive(action:)` (the nonisolated public method) when testing the real async dispatch path. Wrap in `withMainSerialExecutor` and use `Task.megaYield()` to let the spawned Task complete.
+Use `nonisolatedReceive(action:)` (fire-and-forget) when testing the full async dispatch path including loading/error handling. Wrap in `withMainSerialExecutor` and use `Task.megaYield()` to let the spawned Task complete.
 
 ```swift
     @Test func loadItems_deliversErrorOnLoaderFailure() async {
@@ -1021,7 +1046,7 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
             let sut = await makeSUT()
 
             sut.loader.complete(with: .failure(anyNSError()))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
 
             #expect(sut.state.displayError != nil)
@@ -1037,7 +1062,7 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
             let sut = await makeSUT()
 
             sut.loader.complete(with: .failure(anyNSError()))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
 
             #expect(sut.state.isLoading == false)
@@ -1054,13 +1079,13 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
 
             // First trigger an error
             sut.loader.complete(with: .failure(anyNSError()))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
             #expect(sut.state.displayError != nil)
 
             // Then load successfully
             sut.loader.complete(with: .success([]))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
             #expect(sut.state.displayError == nil)
         }
@@ -1069,6 +1094,8 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
 
 #### Pattern 6: Action Locking Prevents Duplicate Execution
 
+Use `nonisolatedReceive` to fire two actions concurrently. The `ActionLocker` ensures only the first executes.
+
 ```swift
     @Test func loadItems_doesNotRequestLoadTwiceWhilePending() async {
         await withMainSerialExecutor {
@@ -1076,10 +1103,10 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
 
             sut.loader.complete(with: .success([]))
 
-            async let first: () = sut.store.isolatedReceive(action: .loadItems)
-            async let second: () = sut.store.isolatedReceive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
 
-            _ = await (first, second)
+            await Task.megaYield()
 
             #expect(sut.loader.loadCallCount == 1)
         }
@@ -1096,11 +1123,11 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
             let newItems = [uniqueItem()]
 
             sut.loader.complete(with: .success(initialItems))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
 
             sut.loader.complete(with: .success(newItems))
-            sut.store.receive(action: .loadMore)
+            sut.store.nonisolatedReceive(action: .loadMore)
             await Task.megaYield()
 
             #expect(sut.state.items == initialItems + newItems)
@@ -1117,11 +1144,11 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
             let initialItems = [uniqueItem(), uniqueItem()]
 
             sut.loader.complete(with: .success(initialItems))
-            sut.store.receive(action: .loadItems)
+            sut.store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
 
             sut.loader.complete(with: .failure(anyNSError()))
-            sut.store.receive(action: .loadMore)
+            sut.store.nonisolatedReceive(action: .loadMore)
             await Task.megaYield()
 
             #expect(sut.state.items == initialItems)
@@ -1140,7 +1167,7 @@ Use `receive(action:)` (the nonisolated public method) when testing the real asy
             #expect(sut.state.canShowLoadmore == true)
 
             sut.loader.complete(with: .failure(anyNSError()))
-            sut.store.receive(action: .loadMore)
+            sut.store.nonisolatedReceive(action: .loadMore)
             await Task.megaYield()
 
             #expect(sut.state.canShowLoadmore == false)
@@ -1165,7 +1192,7 @@ When your store uses a factory closure, capture what arguments were passed:
             await store.binding(state: state)
 
             loader.complete(with: .success([]))
-            store.receive(action: .loadItems)
+            store.nonisolatedReceive(action: .loadItems)
             await Task.megaYield()
 
             #expect(capturedLanguages.value == [.english])
@@ -1175,14 +1202,15 @@ When your store uses a factory closure, capture what arguments were passed:
 
 ---
 
-### When to Use `isolatedReceive` vs `receive`
+### When to Use `receive` vs `nonisolatedReceive` in Tests
 
 | Method | Use When | Requires |
 |--------|----------|----------|
-| `await store.isolatedReceive(action:)` | Simple action → state assertions. Deterministic, no Task spawning. | Nothing extra |
-| `store.receive(action:)` | Testing real async dispatch, action locking with concurrent calls, or `nonisolated` entry point | `withMainSerialExecutor { }` + `await Task.megaYield()` |
+| `try await store.receive(action:)` | Simple action → state assertions. Direct actor call, deterministic. | Nothing extra |
+| `store.nonisolatedReceive(action:)` | Testing full dispatch path (loading/error), action locking with concurrent calls, fire-and-forget | `withMainSerialExecutor { }` + `await Task.megaYield()` |
 
-Make `isolatedReceive` internal (not private) in your production store so tests can call it directly.
+- `receive` is your business logic — tests call it directly for simple success/error path assertions
+- `nonisolatedReceive` goes through `dispatch` — use it when you need to test loading state changes, error display, or concurrent action locking
 
 ---
 
