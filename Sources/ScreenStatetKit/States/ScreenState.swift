@@ -2,11 +2,14 @@ import SwiftUI
 import Combine
 import Observation
 
-//MARK: - Base Screen States
+// MARK: - Base Screen States
 @MainActor
 @Observable
-open class ScreenState: Sendable {
-    
+// @unchecked Sendable: safe because all mutable state is @MainActor-isolated.
+// Subclasses must maintain this invariant — all stored properties must be
+// either immutable or @MainActor-isolated.
+open class ScreenState: @unchecked Sendable {
+
     public var isLoading: Bool = false {
         didSet {
             guard parentStateOption.contains(.loading) else { return }
@@ -17,7 +20,7 @@ open class ScreenState: Sendable {
             }
         }
     }
-    
+
     public var displayError: DisplayableError? {
         didSet {
             if let displayError {
@@ -30,16 +33,16 @@ open class ScreenState: Sendable {
             }
         }
     }
-    
+
     private weak var parentState: ScreenState?
     private let parentStateOption: BindingParentStateOption
-    
+
     private var loadingTaskCount: Int = 0 {
         didSet {
             updateStateLoading()
         }
     }
-    
+
     public init() {
         parentStateOption = .all
     }
@@ -48,28 +51,28 @@ open class ScreenState: Sendable {
         parentState = states
         self.parentStateOption = options
     }
-    
+
     public init(states: ScreenState) {
         parentState = states
         self.parentStateOption = .all
     }
 }
 
-//MARK: - Updaters
+// MARK: - Updaters
 extension ScreenState {
-    
+
     public struct BindingParentStateOption: OptionSet, Sendable {
-        
+
         public let rawValue: Int
         public static let loading = BindingParentStateOption(rawValue: 1 << 0)
         public static let error = BindingParentStateOption(rawValue: 1 << 1)
         public static let all: BindingParentStateOption = [.loading, .error]
-        
+
         public init(rawValue: Int) {
             self.rawValue = rawValue
         }
     }
-    
+
     private func updateStateLoading() {
         let loading = loadingTaskCount > 0
         if loading != self.isLoading {
@@ -78,27 +81,27 @@ extension ScreenState {
             }
         }
     }
-    
+
     public func showError(_ error: LocalizedError) {
         withAnimation {
             self.displayError = .init(message: error.localizedDescription)
         }
     }
-    
+
     public func loadingStarted() {
         loadingTaskCount += 1
     }
-    
+
     public func loadingFinished() {
         guard loadingTaskCount > 0 else { return }
         loadingTaskCount -= 1
     }
-    
+
     public func loadingStarted(action: LoadingTrackable) {
         guard action.canTrackLoading else { return }
         loadingStarted()
     }
-    
+
     public func loadingFinished(action: LoadingTrackable) {
         guard action.canTrackLoading else { return }
         loadingFinished()
