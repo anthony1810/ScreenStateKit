@@ -15,17 +15,21 @@ public typealias AsyncActionPut<Input> = AsyncAction<Input,Void>
 public struct AsyncAction<Input,Output>: Sendable
 where Input: Sendable, Output: Sendable {
     
-    public typealias WorkAction = @Sendable (Input) async throws -> Output
+    public typealias WorkAction = @Sendable @isolated(any) (Input) async throws -> Output
+    public let name: String?
     
-    private let identifier = UUID().uuidString
+    private let identifier = UUID()
     private let action: WorkAction
     
-    public init (_ action: @escaping WorkAction) {
+    public init (name: String? = .none,
+                 _ action: @escaping WorkAction) {
+        self.name = name
         self.action = action
     }
     
     @discardableResult
-    public func asyncExecute(_ input: Input) async throws -> Output {
+    public func asyncExecute(isolation: isolated (any Actor)? = #isolation,
+                             _ input: Input) async throws -> Output {
         try await action(input)
     }
 }
@@ -33,7 +37,7 @@ where Input: Sendable, Output: Sendable {
 extension AsyncAction where Input == Void {
     
     @discardableResult
-    public func asyncExecute() async throws -> Output {
+    public func asyncExecute(isolation: isolated (any Actor)? = #isolation) async throws -> Output {
         try await action(Void())
     }
 }
@@ -42,8 +46,14 @@ extension AsyncAction where Input == Void {
 extension AsyncAction where Output == Void {
     
     public func execute(_ input: Input) {
-        Task {
-            try await action(input)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            Task.immediate {
+                try await action(input)
+            }
+        } else {
+            Task {
+                try await action(input)
+            }
         }
     }
 }
@@ -52,8 +62,14 @@ extension AsyncAction where Output == Void {
 extension AsyncAction where Output == Void, Input == Void {
     
     public func execute() {
-        Task {
-            try await action(Void())
+        if #available(iOS 26.0, macOS 26.0, *) {
+            Task.immediate {
+                try await action(Void())
+            }
+        } else {
+            Task {
+                try await action(Void())
+            }
         }
     }
 }

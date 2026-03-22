@@ -7,6 +7,7 @@
 import Testing
 import ConcurrencyExtras
 import ScreenStateKit
+import Observation
 
 class StoreStateIntegrationTests {
     private var leakTrackers: [MemoryLeakTracker] = []
@@ -21,8 +22,7 @@ class StoreStateIntegrationTests {
     @MainActor
     func test_receiveAction_updatesStateViaKeyPath() async throws {
         let (state, sut) = await makeSUT()
-
-        await sut.isolatedReceive(action: .fetchUser(id: 123))
+        try await sut.receive(action: .fetchUser(id: 123))
 
         #expect(state.userName == "User 123")
         #expect(state.isLoading == false)
@@ -36,12 +36,12 @@ class StoreStateIntegrationTests {
         await withMainSerialExecutor {
             let (state, sut) = await makeSUT()
 
-            let task = Task { await sut.isolatedReceive(action: .slowFetch) }
-            await Task.yield()
+            let task = sut.nonisolatedReceive(action: .slowFetch)
+            await Task.megaYield()
 
             #expect(state.isLoading == true)
 
-            await task.value
+            await task.waitComplete()
 
             #expect(state.isLoading == false)
         }
@@ -53,13 +53,27 @@ class StoreStateIntegrationTests {
         await withMainSerialExecutor {
             let (state, sut) = await makeSUT()
 
-            sut.receive(action: .fetchUser(id: 1))
-            sut.receive(action: .fetchUser(id: 2))
+            sut.nonisolatedReceive(action: .fetchUser(id: 1))
+            sut.nonisolatedReceive(action: .fetchUser(id: 1))
 
             await Task.megaYield()
 
             #expect(state.userName == "User 1")
             #expect(await sut.fetchCount == 1)
+        }
+    }
+    
+    @Test("action locker dont prevents duplicate action execution when params is differents")
+    @MainActor
+    func test_actionLocker_dontPreventsDuplicateExecution() async throws {
+        await withMainSerialExecutor {
+            let (_, sut) = await makeSUT()
+
+            sut.nonisolatedReceive(action: .fetchUser(id: 1))
+            sut.nonisolatedReceive(action: .fetchUser(id: 2))
+
+            await Task.megaYield()
+            #expect(await sut.fetchCount == 2)
         }
     }
 
@@ -70,9 +84,20 @@ class StoreStateIntegrationTests {
     func test_errorAction_setsDisplayError() async throws {
         let (state, sut) = await makeSUT()
 
-        await sut.isolatedReceive(action: .failingAction)
+        await sut.nonisolatedReceive(action: .failingAction).waitComplete()
 
         #expect(state.displayError?.errorDescription == "Something went wrong")
+        #expect(state.isLoading == false)
+    }
+    
+    @Test("error action sets nonDisplayError on state")
+    @MainActor
+    func test_errorAction_setsNonDisplayError() async throws {
+        let (state, sut) = await makeSUT()
+
+        await sut.nonisolatedReceive(action: .faillingWithSilentError).waitComplete()
+
+        #expect(state.displayError == nil)
         #expect(state.isLoading == false)
     }
 
@@ -100,7 +125,7 @@ class StoreStateIntegrationTests {
     func test_fetchUserProfile_updatesMultipleProperties() async throws {
         let (state, sut) = await makeSUT()
 
-        await sut.isolatedReceive(action: .fetchUserProfile(id: 42))
+        try await sut.receive(action: .fetchUserProfile(id: 42))
 
         #expect(state.userName == "John Doe")
         #expect(state.userAge == 25)

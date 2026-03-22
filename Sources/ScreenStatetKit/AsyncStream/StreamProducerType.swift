@@ -23,9 +23,10 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
     
     typealias Continuation = AsyncStream<Element>.Continuation
     
-    public let withLatest: Bool
-    private var continuations: [String:Continuation] = [:]
+    private let storage = StreamStorage()
     private var latestElement: Element?
+    
+    public let withLatest: Bool
     
     /// Events stream
     public var stream: AsyncStream<Element> {
@@ -46,12 +47,11 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         if withLatest {
             latestElement = element
         }
-        continuations.values.forEach({ $0.yield(element) })
+        storage.emit(element: element)
     }
 
     public func finish() {
-        continuations.values.forEach({ $0.finish() })
-        continuations.removeAll()
+        storage.finish()
     }
     
     private func append(_ continuation: Continuation) {
@@ -59,28 +59,77 @@ public actor StreamProducer<Element>: StreamProducerType where Element: Sendable
         continuation.onTermination  = {[weak self] _ in
             self?.onTermination(forKey: key)
         }
-        continuations.updateValue(continuation, forKey: key)
+        storage.update(continuation, forKey: key)
     }
     
     private func removeContinuation(forKey key: String) {
-        continuations.removeValue(forKey: key)
+        storage.removeContinuation(forKey: key)
     }
 
     nonisolated private func onTermination(forKey key: String) {
-        Task(priority: .high) {
-            await removeContinuation(forKey: key)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            Task.immediate {
+                await removeContinuation(forKey: key)
+            }
+        } else {
+            Task(priority: .high) {
+                await removeContinuation(forKey: key)
+            }
         }
     }
     
+    @available(*, deprecated, renamed: "finish", message: "The Stream will be automatically finished when deallocated. No need to call it manually.")
     public nonisolated func nonIsolatedFinish() {
-        Task(priority: .high) {
-            await finish()
+        if #available(iOS 26.0, macOS 26.0, *) {
+            Task.immediate {
+                await finish()
+            }
+        } else {
+            Task(priority: .high) {
+                await finish()
+            }
         }
     }
     
     public nonisolated func nonIsolatedEmit(_ element: Element) {
-        Task(priority: .high) {
-            await emit(element: element)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            Task.immediate {
+                await emit(element: element)
+            }
+        } else {
+            Task(priority: .high) {
+                await emit(element: element)
+            }
         }
     }
 }
+
+//MARK: - Storage
+extension StreamProducer {
+    private final class StreamStorage {
+        
+        private var continuations: [String:Continuation] = [:]
+        
+        func emit(element: Element) {
+            continuations.values.forEach({ $0.yield(element) })
+        }
+        
+        func update(_ continuation: Continuation, forKey key: String) {
+            continuations.updateValue(continuation, forKey: key)
+        }
+        
+        func removeContinuation(forKey key: String) {
+            continuations.removeValue(forKey: key)
+        }
+        
+        func finish() {
+            continuations.values.forEach({ $0.finish() })
+            continuations.removeAll()
+        }
+        
+        deinit {
+            finish()
+        }
+    }
+}
+

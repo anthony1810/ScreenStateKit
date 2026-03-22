@@ -47,7 +47,7 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.0.0")
+    .package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.1.0")
 ]
 ```
 
@@ -107,8 +107,8 @@ actor FeatureViewStore: ScreenActionStore {
     private let dataService: DataServiceProtocol
 
     // MARK: - State Management
-    private let actionLocker = ActionLocker()
-    weak var viewState: FeatureViewState?
+    private let actionLocker = ActionLocker.nonIsolated
+    private(set) weak var viewState: FeatureViewState?
 
     // MARK: - Init
     init(dataService: DataServiceProtocol) {
@@ -116,7 +116,7 @@ actor FeatureViewStore: ScreenActionStore {
     }
 
     // MARK: - Actions
-    enum Action: ActionLockable, LoadingTrackable, Sendable {
+    enum Action: ActionLockable, LoadingTrackable, Hashable {
         case fetchItems
         case loadMore
 
@@ -135,32 +135,17 @@ actor FeatureViewStore: ScreenActionStore {
         self.viewState = state
     }
 
-    nonisolated func receive(action: Action) {
-        Task {
-            await isolatedReceive(action: action)
-        }
-    }
-
     // MARK: - Action Processing
-    func isolatedReceive(action: Action) async {
-        guard await actionLocker.canExecute(action) else { return }
-        await viewState?.loadingStarted(action: action)
+    func receive(action: Action) async throws {
+        guard actionLocker.canExecute(action) else { return }
+        defer { actionLocker.unlock(action) }
 
-        do {
-            switch action {
-            case .fetchItems:
-                try await fetchItems()
-            case .loadMore:
-                try await loadMoreItems()
-            }
-        } catch {
-            await viewState?.showError(
-                DisplayableError(message: error.localizedDescription)
-            )
+        switch action {
+        case .fetchItems:
+            try await fetchItems()
+        case .loadMore:
+            try await loadMoreItems()
         }
-
-        await actionLocker.unlock(action)
-        await viewState?.loadingFinished(action: action)
     }
 
     // MARK: - Action Implementations
@@ -180,6 +165,8 @@ actor FeatureViewStore: ScreenActionStore {
     }
 }
 ```
+
+> **How it works:** You only write business logic in `receive(action:)` and `throw` on errors. The framework's `dispatch` method (called by `nonisolatedReceive`) automatically handles `loadingStarted`, `loadingFinished`, and error routing to `viewState?.showError()`. No boilerplate needed.
 
 **Action Flow:** Here's how actions are processed through `ActionLocker` and `LoadingTrackable`:
 
@@ -219,7 +206,7 @@ struct FeatureView: View {
             await viewStore.binding(state: viewState)
 
             // Initial data fetch
-            viewStore.receive(action: .fetchItems)
+            viewStore.nonisolatedReceive(action: .fetchItems)
         }
     }
 
@@ -245,7 +232,7 @@ struct FeatureView: View {
             }
         }
         .refreshable {
-            try? await viewStore.isolatedReceive(action: .fetchItems)
+            try? await viewStore.receive(action: .fetchItems)
         }
     }
 
@@ -457,7 +444,7 @@ final class ListViewState: LoadmoreScreenState, StateUpdatable {
 **Methods:**
 - `canExecuteLoadmore()` - Enables the load more indicator (no-op if `didLoadAllData` is true)
 - `updateDidLoadAllData(_ didLoadAllData: Bool)` - Updates the `didLoadAllData` flag and toggles `canShowLoadmore`
-- `ternimateLoadmoreView()` - Hides the load more indicator
+- `terminateLoadMoreView()` - Hides the load more indicator
 
 ### RMLoadmoreView
 
@@ -511,13 +498,13 @@ struct ItemListView: View {
         }
         // Parent sets callbacks for child views to trigger
         .onCreated { [weak viewModel] in
-            viewModel?.receive(action: .refreshItems)
+            viewModel?.nonisolatedReceive(action: .refreshItems)
         }
         .onEdited { [weak viewModel] in
-            viewModel?.receive(action: .refreshItems)
+            viewModel?.nonisolatedReceive(action: .refreshItems)
         }
         .onDeleted { [weak viewModel] in
-            viewModel?.receive(action: .refreshItems)
+            viewModel?.nonisolatedReceive(action: .refreshItems)
         }
     }
 }
@@ -661,22 +648,18 @@ let producer = StreamProducer<Int>(element: 0, withLatest: true)
 let producer = StreamProducer<Int>(withLatest: false)
 ```
 
-**Non-isolated methods** for use from `nonisolated` or `deinit` contexts:
+**Non-isolated methods** for use from `nonisolated` contexts:
 - `nonIsolatedEmit(_ element:)` - Emits from a non-isolated context
-- `nonIsolatedFinish()` - Finishes the stream from a non-isolated context
+- `nonIsolatedFinish()` - *(Deprecated)* Streams are automatically finished when the producer is deallocated
 
 ### CancelBag
 
-Manages and cancels multiple async tasks. Essential for cleanup in actors and view models.
+Manages and cancels multiple async tasks. Completed tasks are automatically removed from the bag. All remaining tasks are cancelled when the bag is deallocated.
 
 ```swift
 actor MyViewModel {
-    private let cancelBag = CancelBag()
+    private let cancelBag = CancelBag(onDuplicate: .cancelExisting)
     private let eventProducer = StreamProducer<DataEvent>()
-
-    deinit {
-        cancelBag.cancelAllInTask()
-    }
 
     func startObserving() {
         // Store task with identifier for later cancellation
@@ -694,14 +677,26 @@ actor MyViewModel {
 }
 ```
 
+**Init — `DuplicatePolicy`:**
+- `CancelBag(onDuplicate: .cancelExisting)` - When a new task is stored with the same identifier, cancel the existing one
+- `CancelBag(onDuplicate: .cancelNew)` - When a new task is stored with the same identifier, cancel the new one
+
+**Properties:**
+- `isEmpty: Bool` - Whether the bag has no running tasks
+- `count: Int` - Number of running tasks
+
 **Methods:**
 - `cancelAll()` - Cancels all stored tasks
-- `cancel(forIdentifier:)` - Cancels a specific task by its identifier
-- `cancelAllInTask()` - Non-isolated version for use in `deinit`
+- `cancel(forIdentifier:)` - Cancels a specific task by its identifier (accepts `AnyHashable`)
 
 **Task extension:**
-- `task.store(in: cancelBag)` - Store with auto-generated identifier
-- `task.store(in: cancelBag, withIdentifier: "id")` - Store with a specific identifier (cancels any existing task with the same identifier)
+- `task.store(in: cancelBag)` - Store with auto-generated identifier, returns `AnyTask`
+- `task.store(in: cancelBag, withIdentifier: id)` - Store with a specific identifier, returns `AnyTask`
+
+**AnyTask:**
+- `cancel()` - Cancel the underlying task
+- `waitComplete()` - Await completion of the underlying task
+- `isCancelled: Bool` - Whether the task has been cancelled
 
 ### AnyAsyncStream
 
@@ -727,8 +722,9 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 
 | Protocol | Purpose |
 |----------|---------|
-| `ScreenActionStore` | Actor-based protocol for ViewModels. Requires `binding(state:)` and `receive(action:)` |
+| `ScreenActionStore` | Actor-based protocol for ViewModels. Requires `receive(action:) async throws` and `viewState`. Provides `nonisolatedReceive` and centralized `dispatch` for loading/error handling |
 | `ActionLockable` | Provides a `lockKey` for action deduplication. Auto-conforms for `Hashable` types |
+| `NonPresentableError` | Protocol for errors that should be logged but not shown to the user (`isSilent: Bool`) |
 | `LoadingTrackable` | Declares whether an action should track loading state via `canTrackLoading` |
 | `StateUpdatable` | Provides `updateState(_:withAnimation:disablesAnimations:)` for batched state updates |
 | `PlaceholderRepresentable` | Declares `placeholder` and `isPlaceholder` for skeleton loading |
@@ -746,16 +742,17 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 
 | Actor | Purpose |
 |-------|---------|
-| `ActionLocker` | Prevents duplicate action execution with `lock`, `unlock`, `canExecute`, `free` |
-| `CancelBag` | Task lifecycle management with identifier-based cancellation |
+| `ActionLocker` | Prevents duplicate action execution. Two variants: `.isolated` (actor) and `.nonIsolated` (class) |
+| `CancelBag` | Task lifecycle management with `DuplicatePolicy`, auto-removal of completed tasks, and identifier-based cancellation |
 | `StreamProducer<Element>` | Multi-subscriber async stream with optional latest-value replay |
 
 ### Structs
 
 | Struct | Purpose |
 |--------|---------|
-| `AsyncAction<Input, Output>` | Generic async action wrapper with `execute` and `asyncExecute` |
-| `DisplayableError` | `LocalizedError` wrapper for displaying error alerts |
+| `AsyncAction<Input, Output>` | Generic async action wrapper with `execute`, `asyncExecute`, and `#isolation` support |
+| `DisplayableError` | `LocalizedError` wrapper with `originalError`, `isSilent`, and error routing support |
+| `AnyTask` | Public handle to a stored task with `cancel()`, `waitComplete()`, and `isCancelled` |
 | `AnyAsyncStream<Element>` | Type-erased `AsyncSequence` wrapper |
 | `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
 
