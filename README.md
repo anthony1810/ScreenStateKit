@@ -569,32 +569,43 @@ struct EditItemView: View {
 
 ## App Refresh Bus
 
-A lightweight, app-wide "refresh signal" bus built on the SwiftUI environment and the `@Observable` macro (no Combine). It lets any screen broadcast *"something changed, reload X"* and lets any other screen react — without the two knowing about each other. This decouples a producer (e.g. you just created an item) from consumers (e.g. a list that needs to reload).
+A lightweight, app-wide "refresh signal" bus built on the SwiftUI environment and the `@Observable` macro (no Combine). It lets any screen broadcast *"something changed, reload X"* and lets any other screen react — without the two knowing about each other. It is generic over two types you define:
+
+- **`Option`** (an `OptionSet`) — *what* to refresh. Consumers filter on it, and you can combine signals (`[.inbox, .settings]`) in one call.
+- **`Source`** (any `Sendable`, typically an `enum`) — an optional **payload** delivered to observers. Its associated values carry the fresh object, so a consumer can update without touching a local DB (e.g. hand it a brand-new `Session`).
 
 ### How It Works
 
-- **`AppRefresher`** — `@MainActor @Observable` broadcaster holding a single `action`. Call `refresh(_:)` to publish.
-- **`AppRefreshAction.RefreshOption`** — an `OptionSet` describing *what* to refresh. ScreenStateKit ships only `.idle`; **your app defines its own options** by extending it. Because it's an `OptionSet`, multiple signals can be combined in one call.
-- **`AppRefreshAction`** — wraps the option **plus a fresh `requestId: UUID`** on every `refresh(_:)`. The UUID makes each signal unique, so consumers still react when the *same* option is fired twice in a row (SwiftUI would otherwise dedupe identical values).
+- **`AppRefresher<Option, Source>`** — `@MainActor @Observable` broadcaster holding the latest `action`. Call `refresh(_:source:)` to publish.
+- **`AppRefreshAction<Option, Source>`** — wraps the `option`, the optional `source` payload, and a fresh `id: UUID` on every call. The UUID makes each signal unique, so consumers still react when the *same* option fires twice in a row (SwiftUI would otherwise dedupe identical values).
 
-### 1. Define Your Refresh Options
+### 1. Define Your Option and Source
 
 ```swift
 import ScreenStateKit
 
-extension AppRefreshAction.RefreshOption {
-    static let globalInbox = AppRefreshAction.RefreshOption(rawValue: 1 << 1)
-    static let channelState = AppRefreshAction.RefreshOption(rawValue: 1 << 2)
+struct RefreshOption: OptionSet, Sendable {
+    let rawValue: Int
+    static let inboxMessage = RefreshOption(rawValue: 1 << 0)
+    static let teamSettings = RefreshOption(rawValue: 1 << 1)
 }
+
+enum RefreshSource: Sendable {
+    case newSetting(TeamSetting)     // associated value = the payload object
+    case newSession(Session)
+}
+
+typealias Refresher = AppRefresher<RefreshOption, RefreshSource>
 ```
 
 ### 2. Host the Bus Once, Near the Root
 
 ```swift
+// Auto-create and inject:
 RootView()
-    .appRefresherHost()              // creates and injects an AppRefresher
+    .appRefresherHost(option: RefreshOption.self, source: RefreshSource.self)
 
-// Or inject a shared instance you own (e.g. to send from a store):
+// Or inject a shared instance you own (e.g. to also send from a store):
 RootView()
     .appRefresherHost(myRefresher)
 ```
@@ -602,14 +613,14 @@ RootView()
 ### 3. Broadcast a Signal
 
 ```swift
-struct CreateItemScreen: View {
-    @Environment(\.appRefresher) private var refresher
+struct EditSettingScreen: View {
+    @Environment(Refresher.self) private var refresher
 
     var body: some View {
-        Button("Create") {
+        Button("Save") {
             Task {
-                await store.receive(.create)
-                refresher?.refresh(.globalInbox)        // or [.globalInbox, .channelState]
+                let setting = await store.save()
+                refresher?.refresh(.teamSettings, source: .newSetting(setting))
             }
         }
     }
@@ -623,16 +634,22 @@ struct InboxScreen: View {
     var body: some View {
         List(/* ... */) { /* ... */ }
             // .onNextAppear (default): defers until the screen is next visible
-            .onAppRefresh(.globalInbox) {
-                Task { await store.receive(.reload) }
+            .onAppRefresh(RefreshOption.teamSettings) { (source: RefreshSource?) in
+                if case let .newSetting(setting) = source {
+                    store.apply(setting)               // use the payload directly
+                } else {
+                    Task { await store.receive(.reload) }
+                }
             }
             // .immediate: runs right away, even while off-screen
-            .onAppRefresh(.channelState, behavior: .immediate) {
-                Task { await store.receive(.recheckState) }
+            .onAppRefresh(RefreshOption.inboxMessage, behavior: .immediate) { _ in
+                Task { await store.receive(.reload) }
             }
     }
 }
 ```
+
+> Spell the option's type at the call site (`RefreshOption.teamSettings`) — chained modifiers give no contextual type for leading-dot syntax to infer the generic `Option` from.
 
 ### Behavior
 
@@ -641,7 +658,7 @@ struct InboxScreen: View {
 | `.onNextAppear` (default) | Stores the request; runs on the view's next `onAppear`. Ideal for hidden screens — no point reloading a list the user can't see. |
 | `.immediate` | Runs the instant the signal fires, even if the view is off-screen. |
 
-> **Using it from a Store:** The bus is read through the SwiftUI environment, so the View is the boundary that listens. Forward into your `ScreenActionStore` from the closure — `.onAppRefresh(.globalInbox) { Task { await store.receive(.reload) } }` — keeping the store free of any SwiftUI/environment coupling.
+> **Using it from a Store:** The bus is read through the SwiftUI environment, so the View is the boundary that listens. Forward into your `ScreenActionStore` from the closure — `.onAppRefresh(RefreshOption.inboxMessage) { _ in Task { await store.receive(.reload) } }` — keeping the store free of any SwiftUI/environment coupling.
 
 ---
 
@@ -816,7 +833,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 |-------|---------|
 | `ScreenState` | `@Observable @MainActor` base class with loading counter, error handling, and parent binding |
 | `LoadmoreScreenState` | Extends `ScreenState` with pagination state (`canShowLoadmore`, `didLoadAllData`) |
-| `AppRefresher` | `@Observable @MainActor` app-wide refresh bus. Call `refresh(_:)` to broadcast a `RefreshOption` |
+| `AppRefresher<Option, Source>` | `@Observable @MainActor` app-wide refresh bus. Call `refresh(_:source:)` to broadcast an `OptionSet` plus an optional payload |
 
 ### Actors
 
@@ -835,7 +852,8 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `AnyTask` | Public handle to a stored task with `cancel()`, `waitComplete()`, and `isCancelled` |
 | `AnyAsyncStream<Element>` | Type-erased `AsyncSequence` wrapper |
 | `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
-| `AppRefreshAction` | Envelope carrying a `RefreshOption` plus a unique `requestId`; nested `RefreshOption` is a consumer-extensible `OptionSet` |
+| `AppRefreshAction<Option, Source>` | Envelope carrying the `option`, an optional `source` payload, and a unique `id` per emission |
+| `AppRefreshBehavior` | Delivery mode for `onAppRefresh`: `.onNextAppear` (default) or `.immediate` |
 
 ### View Modifiers
 
@@ -849,8 +867,8 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `.onDeleted(_:)` | Environment callback for delete actions |
 | `.onCreated(_:)` | Environment callback for create actions |
 | `.onCancelled(_:)` | Environment callback for cancel actions |
-| `.appRefresherHost()` | Creates and injects an `AppRefresher` into the environment (overload accepts a shared instance) |
-| `.onAppRefresh(_:behavior:perform:)` | Reacts to a `RefreshOption`, with `.onNextAppear` (default) or `.immediate` behavior |
+| `.appRefresherHost(option:source:)` | Creates and injects an `AppRefresher` into the environment (overload accepts a shared instance) |
+| `.onAppRefresh(_:behavior:perform:)` | Reacts to an option, delivering the `Source?` payload, with `.onNextAppear` (default) or `.immediate` behavior |
 
 ---
 

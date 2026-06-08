@@ -7,78 +7,83 @@ import Testing
 import SwiftUI
 @testable import ScreenStateKit
 
-private extension AppRefreshAction.RefreshOption {
-    static let inbox = AppRefreshAction.RefreshOption(rawValue: 1 << 1)
-    static let channelState = AppRefreshAction.RefreshOption(rawValue: 1 << 2)
+private struct TestOption: OptionSet, Sendable {
+    let rawValue: Int
+    static let inbox = TestOption(rawValue: 1 << 0)
+    static let settings = TestOption(rawValue: 1 << 1)
 }
+
+private enum TestSource: Sendable, Equatable {
+    case newSetting(String)
+    case newSession(Int)
+}
+
+private typealias SUT = AppRefresher<TestOption, TestSource>
 
 @Suite("AppRefresher Tests")
 @MainActor
 struct AppRefresherTests {
 
-    @Test("init starts in idle")
-    func test_init_startsIdle() {
-        let sut = AppRefresher()
+    @Test("init starts with no action")
+    func test_init_noAction() {
+        let sut = SUT()
 
-        #expect(sut.action.option == .idle)
+        #expect(sut.action == nil)
     }
 
-    @Test("refresh updates the current option")
-    func test_refresh_updatesOption() {
-        let sut = AppRefresher()
+    @Test("refresh records the option and leaves source nil by default")
+    func test_refresh_recordsOption_noSource() {
+        let sut = SUT()
 
         sut.refresh(.inbox)
 
-        #expect(sut.action.option == .inbox)
+        #expect(sut.action?.option == .inbox)
+        #expect(sut.action?.source == nil)
     }
 
-    @Test("refreshing the same option twice produces a new requestId")
-    func test_refresh_sameOptionTwice_producesUniqueRequestIds() {
-        let sut = AppRefresher()
+    @Test("refresh carries the source payload object")
+    func test_refresh_carriesSourcePayload() {
+        let sut = SUT()
 
-        sut.refresh(.inbox)
-        let first = sut.action.requestId
-        sut.refresh(.inbox)
-        let second = sut.action.requestId
+        sut.refresh(.settings, source: .newSetting("dark"))
 
-        #expect(first != second)
+        #expect(sut.action?.option == .settings)
+        #expect(sut.action?.source == .newSetting("dark"))
     }
 
-    @Test("refresh can carry combined options")
+    @Test("refresh can combine options in one signal")
     func test_refresh_combinedOptions() {
-        let sut = AppRefresher()
+        let sut = SUT()
 
-        sut.refresh([.inbox, .channelState])
+        sut.refresh([.inbox, .settings], source: .newSession(7))
 
-        #expect(sut.action.option.contains(.inbox))
-        #expect(sut.action.option.contains(.channelState))
+        #expect(sut.action?.option.contains(.inbox) == true)
+        #expect(sut.action?.option.contains(.settings) == true)
+        #expect(sut.action?.source == .newSession(7))
     }
 
-    @Test("idle option does not contain consumer options")
-    func test_idle_doesNotContainConsumerOptions() {
-        let sut = AppRefresher()
+    @Test("refreshing the same option twice produces a new id")
+    func test_refresh_sameOptionTwice_producesUniqueIds() {
+        let sut = SUT()
 
-        #expect(sut.action.option.contains(.inbox) == false)
-    }
+        sut.refresh(.inbox)
+        let first = sut.action?.id
+        sut.refresh(.inbox)
+        let second = sut.action?.id
 
-    @Test("environment value can be set and retrieved")
-    func test_environmentValue_setAndRetrieve() {
-        var env = EnvironmentValues()
-        #expect(env.appRefresher == nil)
-
-        env.appRefresher = AppRefresher()
-        #expect(env.appRefresher != nil)
+        #expect(first != nil)
+        #expect(first != second)
     }
 
     @Test("view modifiers can be applied to views")
     func test_viewModifiers_canBeApplied() {
         let _ = Text("Test")
-            .appRefresherHost()
-            .onAppRefresh(.inbox) { }
+            .appRefresherHost(option: TestOption.self, source: TestSource.self)
+            .onAppRefresh(TestOption.inbox) { (_: TestSource?) in }
 
-        let refresher = AppRefresher()
+        let refresher = SUT()
         let _ = Text("Test")
             .appRefresherHost(refresher)
-            .onAppRefresh(.channelState, behavior: .immediate) { }
+            .onAppRefresh(TestOption.settings, behavior: .immediate) { (_: TestSource?) in }
     }
 }
