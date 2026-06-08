@@ -26,6 +26,7 @@ Check out the [Definery](https://github.com/anthony1810/Definery) app for a real
 - [Skeleton Loading (Placeholder)](#skeleton-loading-placeholder)
 - [Load More Pagination](#load-more-pagination)
 - [Environment CRUD Callbacks](#environment-crud-callbacks)
+- [App Refresh Bus](#app-refresh-bus)
 - [AsyncAction](#asyncaction)
 - [Async Streaming](#async-streaming)
 - [API Reference](#api-reference)
@@ -566,6 +567,84 @@ struct EditItemView: View {
 
 ---
 
+## App Refresh Bus
+
+A lightweight, app-wide "refresh signal" bus built on the SwiftUI environment and the `@Observable` macro (no Combine). It lets any screen broadcast *"something changed, reload X"* and lets any other screen react — without the two knowing about each other. This decouples a producer (e.g. you just created an item) from consumers (e.g. a list that needs to reload).
+
+### How It Works
+
+- **`AppRefresher`** — `@MainActor @Observable` broadcaster holding a single `action`. Call `refresh(_:)` to publish.
+- **`AppRefreshAction.RefreshOption`** — an `OptionSet` describing *what* to refresh. ScreenStateKit ships only `.idle`; **your app defines its own options** by extending it. Because it's an `OptionSet`, multiple signals can be combined in one call.
+- **`AppRefreshAction`** — wraps the option **plus a fresh `requestId: UUID`** on every `refresh(_:)`. The UUID makes each signal unique, so consumers still react when the *same* option is fired twice in a row (SwiftUI would otherwise dedupe identical values).
+
+### 1. Define Your Refresh Options
+
+```swift
+import ScreenStateKit
+
+extension AppRefreshAction.RefreshOption {
+    static let globalInbox = AppRefreshAction.RefreshOption(rawValue: 1 << 1)
+    static let channelState = AppRefreshAction.RefreshOption(rawValue: 1 << 2)
+}
+```
+
+### 2. Host the Bus Once, Near the Root
+
+```swift
+RootView()
+    .appRefresherHost()              // creates and injects an AppRefresher
+
+// Or inject a shared instance you own (e.g. to send from a store):
+RootView()
+    .appRefresherHost(myRefresher)
+```
+
+### 3. Broadcast a Signal
+
+```swift
+struct CreateItemScreen: View {
+    @Environment(\.appRefresher) private var refresher
+
+    var body: some View {
+        Button("Create") {
+            Task {
+                await store.receive(.create)
+                refresher?.refresh(.globalInbox)        // or [.globalInbox, .channelState]
+            }
+        }
+    }
+}
+```
+
+### 4. React to a Signal
+
+```swift
+struct InboxScreen: View {
+    var body: some View {
+        List(/* ... */) { /* ... */ }
+            // .onNextAppear (default): defers until the screen is next visible
+            .onAppRefresh(.globalInbox) {
+                Task { await store.receive(.reload) }
+            }
+            // .immediate: runs right away, even while off-screen
+            .onAppRefresh(.channelState, behavior: .immediate) {
+                Task { await store.receive(.recheckState) }
+            }
+    }
+}
+```
+
+### Behavior
+
+| Behavior | When the action runs |
+|----------|----------------------|
+| `.onNextAppear` (default) | Stores the request; runs on the view's next `onAppear`. Ideal for hidden screens — no point reloading a list the user can't see. |
+| `.immediate` | Runs the instant the signal fires, even if the view is off-screen. |
+
+> **Using it from a Store:** The bus is read through the SwiftUI environment, so the View is the boundary that listens. Forward into your `ScreenActionStore` from the closure — `.onAppRefresh(.globalInbox) { Task { await store.receive(.reload) } }` — keeping the store free of any SwiftUI/environment coupling.
+
+---
+
 ## AsyncAction
 
 A generic wrapper for async/await operations with configurable input and output types.
@@ -737,6 +816,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 |-------|---------|
 | `ScreenState` | `@Observable @MainActor` base class with loading counter, error handling, and parent binding |
 | `LoadmoreScreenState` | Extends `ScreenState` with pagination state (`canShowLoadmore`, `didLoadAllData`) |
+| `AppRefresher` | `@Observable @MainActor` app-wide refresh bus. Call `refresh(_:)` to broadcast a `RefreshOption` |
 
 ### Actors
 
@@ -755,6 +835,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `AnyTask` | Public handle to a stored task with `cancel()`, `waitComplete()`, and `isCancelled` |
 | `AnyAsyncStream<Element>` | Type-erased `AsyncSequence` wrapper |
 | `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
+| `AppRefreshAction` | Envelope carrying a `RefreshOption` plus a unique `requestId`; nested `RefreshOption` is a consumer-extensible `OptionSet` |
 
 ### View Modifiers
 
@@ -768,6 +849,8 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `.onDeleted(_:)` | Environment callback for delete actions |
 | `.onCreated(_:)` | Environment callback for create actions |
 | `.onCancelled(_:)` | Environment callback for cancel actions |
+| `.appRefresherHost()` | Creates and injects an `AppRefresher` into the environment (overload accepts a shared instance) |
+| `.onAppRefresh(_:behavior:perform:)` | Reacts to a `RefreshOption`, with `.onNextAppear` (default) or `.immediate` behavior |
 
 ---
 
