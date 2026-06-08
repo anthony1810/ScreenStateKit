@@ -75,13 +75,13 @@ public actor CancelBag: ObservableObject {
         if #available(iOS 26.0, macOS 26.0, *) {
             Task.immediate {[weak self] in
                 await self?.insert(task)
-                await task.waitComplete()
+                try? await task.waitComplete()
                 await self?.removeCanceller(by: task.watchId)
             }
         } else {
             Task {[weak self] in
                 await self?.insert(task)
-                await task.waitComplete()
+                try? await task.waitComplete()
                 await self?.removeCanceller(by: task.watchId)
             }
         }
@@ -167,7 +167,7 @@ public struct AnyTask: Sendable {
     
     public typealias Identifier = Hashable & Sendable
     public let cancel: @Sendable () -> Void
-    public let waitComplete: @Sendable () async -> Void
+    public let waitComplete: @Sendable () async throws -> Void
     public var isCancelled: Bool { isCancelledBock() }
     public let id: any Identifier
     
@@ -180,7 +180,7 @@ public struct AnyTask: Sendable {
     
     init<S,E>(_ task: Task<S,E>, identifier: any Identifier) {
         cancel = { task.cancel() }
-        waitComplete = { _ = await task.result }
+        waitComplete = { _ = try await task.value }
         isCancelledBock = { task.isCancelled }
         id = identifier
         watchId = .init()

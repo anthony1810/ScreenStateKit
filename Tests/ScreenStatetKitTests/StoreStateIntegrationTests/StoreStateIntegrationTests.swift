@@ -41,7 +41,7 @@ class StoreStateIntegrationTests {
 
             #expect(state.isLoading == true)
 
-            await task.waitComplete()
+            try? await task.waitComplete()
 
             #expect(state.isLoading == false)
         }
@@ -84,7 +84,7 @@ class StoreStateIntegrationTests {
     func test_errorAction_setsDisplayError() async throws {
         let (state, sut) = await makeSUT()
 
-        await sut.nonisolatedReceive(action: .failingAction).waitComplete()
+        try? await sut.nonisolatedReceive(action: .failingAction).waitComplete()
 
         #expect(state.displayError?.errorDescription == "Something went wrong")
         #expect(state.isLoading == false)
@@ -95,7 +95,7 @@ class StoreStateIntegrationTests {
     func test_errorAction_setsNonDisplayError() async throws {
         let (state, sut) = await makeSUT()
 
-        await sut.nonisolatedReceive(action: .faillingWithSilentError).waitComplete()
+        try? await sut.nonisolatedReceive(action: .faillingWithSilentError).waitComplete()
 
         #expect(state.displayError == nil)
         #expect(state.isLoading == false)

@@ -65,7 +65,7 @@ public final class NonIsolatedActionLocker {
     
     public func unlock(_ action: ActionLockable) {
         guard actions[action.lockKey] != .none else { return }
-        actions.updateValue(false, forKey: action.lockKey)
+        actions.removeValue(forKey: action.lockKey)
     }
     
     public func canExecute(_ action: ActionLockable) -> Bool {
@@ -84,7 +84,7 @@ public final class NonIsolatedActionLocker {
 
 extension ActionLocker {
     
-    public enum Errors: Error {
+    public enum Errors: Error, NonPresentableError {
         case actionIsRunning
     }
 }
