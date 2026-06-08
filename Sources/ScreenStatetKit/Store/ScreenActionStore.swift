@@ -56,28 +56,31 @@ extension ScreenActionStore {
     where Action: Hashable, Action: LoadingTrackable {
         if #available(iOS 26.0, macOS 26.0, *) {
             Task.immediate {
-                await dispatch(action: action)
+                try await dispatch(action: action)
             }
             .store(in: canceller, withIdentifier: action)
         } else {
             Task {
-                await dispatch(action: action)
+                try await dispatch(action: action)
             }
             .store(in: canceller, withIdentifier: action)
         }
     }
 
-    private func dispatch(action: Action) async
+    private func dispatch(action: Action) async throws
     where Action: Hashable, Action: LoadingTrackable {
         await viewState?.loadingStarted(action: action)
         do {
             try await receive(action: action)
+            await viewState?.loadingFinished(action: action)
         } catch let displayable as DisplayableError where !displayable.isSilent {
             await viewState?.showError(displayable)
+            await viewState?.loadingFinished(action: action)
+            throw displayable
         } catch {
-            printDebug(error.localizedDescription)
+            await viewState?.loadingFinished(action: action)
+            throw error
         }
-        await viewState?.loadingFinished(action: action)
     }
     
     func printDebug(_ message: @autoclosure () -> String) {
