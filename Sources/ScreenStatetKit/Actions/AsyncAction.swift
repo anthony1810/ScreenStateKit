@@ -46,6 +46,7 @@ extension AsyncAction where Input == Void {
 extension AsyncAction where Output == Void {
     
     public func execute(_ input: Input) {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             Task.immediate {
                 try await action(input)
@@ -55,6 +56,11 @@ extension AsyncAction where Output == Void {
                 try await action(input)
             }
         }
+        #else
+        Task {
+            try await action(input)
+        }
+        #endif
     }
 }
 
@@ -62,6 +68,7 @@ extension AsyncAction where Output == Void {
 extension AsyncAction where Output == Void, Input == Void {
     
     public func execute() {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             Task.immediate {
                 try await action(Void())
@@ -71,6 +78,11 @@ extension AsyncAction where Output == Void, Input == Void {
                 try await action(Void())
             }
         }
+        #else
+        Task {
+            try await action(Void())
+        }
+        #endif
     }
 }
 

@@ -54,6 +54,7 @@ extension ScreenActionStore {
         canceller: CancelBag? = .none
     ) -> AnyTask
     where Action: Hashable, Action: LoadingTrackable {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             Task.immediate {
                 try await dispatch(action: action)
@@ -65,6 +66,12 @@ extension ScreenActionStore {
             }
             .store(in: canceller, withIdentifier: action)
         }
+        #else
+        Task {
+            try await dispatch(action: action)
+        }
+        .store(in: canceller, withIdentifier: action)
+        #endif
     }
 
     private func dispatch(action: Action) async throws
