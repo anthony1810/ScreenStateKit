@@ -20,6 +20,138 @@ The flow: **View** dispatches actions to **Store** via `nonisolatedReceive(actio
 
 ---
 
+## Best Practices (Enforce These)
+
+These are the non-negotiable rules that keep an SSK feature correct, testable, and free of concurrency bugs. Each rule has a *why* — follow them on every screen.
+
+### 1. One-way data flow: View → Store → State
+
+The only legal direction is **View dispatches an action → Store processes it → Store writes State → View re-renders**. Never short-circuit it.
+
+- ✅ View calls `viewStore.nonisolatedReceive(action:)` (or `try await viewStore.receive(action:)`).
+- ✅ Only the Store writes the State, and only via `updateState`.
+- ❌ The View never mutates the State. ❌ Nothing outside the Store mutates the State.
+
+**Why:** the State is the single source of truth. If the View (or a sibling object) writes to it directly, state changes bypass the store's action pipeline — you lose action locking, loading/error tracking, and the ability to test behavior by feeding actions. Mutations also stop being serialized through the actor, reintroducing the races SSK exists to remove.
+
+### 2. The View is dumb — it holds no business state
+
+The View renders `viewState` and dispatches actions. That's all. **All** screen state lives on the ViewState.
+
+- ❌ No `@State` business/derived/loading/error flags in the View.
+- ✅ Derived values are computed properties **on the ViewState**, not in the View.
+- ✅ Only allowed View-local state: genuinely SwiftUI-local UI that cannot live in the model — `@FocusState`, scroll position, `matchedGeometryEffect` namespaces, transient animation toggles. When in doubt, put it on the ViewState.
+
+**Why:** a dumb View is trivially previewable and snapshot-testable (construct a ViewState, render). Business logic in the View is untestable without launching the UI, and split state (some in View, some in ViewState) drifts out of sync.
+
+### 3. Declare the `Action` enum in an extension above the store
+
+Put the action type in its own `extension` directly **above** the store declaration, then the actor body. Keep `canTrackLoading` next to the cases it describes.
+
+```swift
+extension ManageStatsViewStore {
+    enum Action: ActionLockable, LoadingTrackable, Hashable, Sendable {
+        case load
+        case remove(String)
+        case add(String)
+        case move(fromOffsets: IndexSet, toOffset: Int)
+        case upsertCustom(EventStat)
+        case deleteCustom(String)
+        case tapLocked(String)
+
+        var canTrackLoading: Bool {
+            if case .load = self { return true }
+            return false
+        }
+    }
+}
+
+actor ManageStatsViewStore: ScreenActionStore {
+    private(set) weak var viewState: ManageStatsViewState?
+    private let actionLocker = ActionLocker.nonIsolated
+    private let repository: any EventStatsRepositoryType
+
+    // init + binding + receive(action:) ...
+}
+```
+
+**Why:** the action surface is the screen's public contract — keeping it in a dedicated extension at the top makes it the first thing a reader sees, keeps the actor body focused on logic, and avoids a giant nested enum interrupting the store. `Sendable` + `Hashable` give you the auto-synthesized `lockKey` for free.
+
+### 4. Drive `isLoading` and `displayError` through the framework — don't set them yourself
+
+`ScreenState` already owns `isLoading` (a counter) and `displayError`. The framework's `dispatch` (entered via `nonisolatedReceive`) starts/stops loading and routes errors for you.
+
+- ✅ Mark which actions show the spinner with `canTrackLoading` on the `Action`.
+- ✅ Surface a failure by simply `throw`-ing out of `receive` — `dispatch` calls `showError` for you.
+- ✅ In the View: `.onShowLoading($viewState.isLoading)` and `.onShowError($viewState.displayError)`.
+- ❌ Don't add your own `isLoading`/`errorMessage` fields. ❌ Don't call `loadingStarted`/`loadingFinished` or `showError` manually in normal flow. ❌ Don't toggle a bool to drive a spinner.
+
+```swift
+// canTrackLoading == true for this action → spinner shows automatically.
+func receive(action: Action) async throws {
+    guard actionLocker.canExecute(action) else { return }
+    defer { actionLocker.unlock(action) }
+
+    switch action {
+    case .load:
+        let stats = try await repository.load()   // throw → dispatch shows the error, stops loading
+        await viewState?.updateState { $0.stats = stats }
+    }
+}
+```
+
+**Why:** `isLoading` is a counter, not a toggle — concurrent trackable actions increment/decrement it so the spinner is correct under overlap. Setting `displayError` auto-resets loading. Hand-rolling these flags re-creates the exact bugs (stuck spinners, error+loading both on) the counter was designed to prevent. One spinner/error mechanism per screen, owned by the framework.
+
+### 5. No `do/catch` in your action sub-functions
+
+`dispatch` already wraps your `receive` in a `do/catch` that routes thrown errors to `showError` (respecting `NonPresentableError.isSilent`). Your private action helpers should just `try` and let errors propagate.
+
+```swift
+// ✅ Let it throw — dispatch handles it.
+private func load() async throws {
+    let stats = try await repository.load()
+    await viewState?.updateState { $0.stats = stats }
+}
+
+// ❌ Redundant — swallows the error and defeats the framework's routing.
+private func load() async throws {
+    do {
+        let stats = try await repository.load()
+        await viewState?.updateState { $0.stats = stats }
+    } catch {
+        await viewState?.showError(DisplayableError(error: error))
+    }
+}
+```
+
+**The only legitimate `catch`:** when a failure is *expected* and should NOT show an alert (e.g. `loadMore`) — catch it, do cleanup, then `return` or `throw` a `NonPresentableError`. Everything else: just `try`.
+
+**Why:** a single error-handling path (the framework's) means every error is presented consistently and loading is always stopped. Local `do/catch` either duplicates that or silently eats errors, making failures invisible and untestable.
+
+### 6. Never use `MainActor.run { }` to touch the State
+
+To read or write the `@MainActor` State from the actor store, use `updateState` (write) and `readState` (read). Don't reach for `MainActor.run`, `Task { @MainActor in }`, or `await MainActor.run`.
+
+- ✅ Write: `await viewState?.updateState { state in … }`
+- ✅ Read one/many: `await viewState?.readState { … }`
+- ❌ `await MainActor.run { viewState?.items = … }`
+
+**Why:** `updateState` wraps writes in a transaction (batched, animated, single render pass); raw `MainActor.run` writes aren't transactional and tear across renders. `readState` gives an atomic multi-value snapshot; sequential `await viewState?.x` reads don't. The dedicated functions also state intent and keep the call sites uniform and reviewable.
+
+### 7. `ActionLocker.nonIsolated` inside the actor; lock at the top of `receive`, unlock in `defer`
+
+```swift
+func receive(action: Action) async throws {
+    guard actionLocker.canExecute(action) else { return }
+    defer { actionLocker.unlock(action) }
+    // ...
+}
+```
+
+**Why:** the actor already serializes access, so the non-isolated locker avoids needless cross-actor hops. `canExecute` dedupes in-flight actions (double taps, repeated loadmore); `defer` guarantees the unlock even on a thrown error, so the action can run again next time.
+
+---
+
 ## Pillar 1: State
 
 ### Basic ScreenState
@@ -69,6 +201,46 @@ await viewState?.updateState(withAnimation: .easeInOut) { state in
 // Without animation
 await viewState?.updateState(withAnimation: .none) { state in
     state.items = newItems
+}
+```
+
+`updateState` batches every write into a **single** MainActor hop inside one `withTransaction`, so a multi-property mutation renders atomically in one SwiftUI pass. Never mutate the state by writing properties directly — always go through `updateState`.
+
+### readState (Atomic Multi-Value Reads)
+
+`readState` is the read-side counterpart to `updateState`. Use it when the store needs **two or more** current values off the `@MainActor` state at once (e.g. the existing list before appending a page). Reading them one-by-one is unsafe — each `await viewState?.x` is its own MainActor hop and the state can change between hops, so the values may not agree with each other:
+
+```swift
+// ❌ Two separate hops — `items` and `isShowing` may reflect different states.
+let items  = await viewState?.items ?? []
+let isOpen = await viewState?.isShowing ?? false
+```
+
+`readState` runs all reads inside one closure executed in a single MainActor hop, returning a consistent snapshot — a single value, or a tuple of matching arity:
+
+```swift
+// ✅ One hop, one coherent snapshot.
+let (items, isOpen): ([Item], Bool) = await viewState?.readState { state in
+    state.items
+    state.isShowing
+} ?? ([], false)
+
+// Single value comes back unwrapped (no 1-tuple):
+let title: String = await viewState?.readState { $0.title } ?? ""
+```
+
+It is backed by `StateValueBuilder` (a result builder using parameter packs), so it supports any arity. The block returns `Sendable` values, so the snapshot is safe to carry back into the actor. For a single value, plain `await viewState?.foo` is equally safe — only reach for `readState` when you need multiple values atomically.
+
+Refactor the loadmore read using it:
+
+```swift
+private func loadMoreItems() async throws {
+    let currentItems = await viewState?.readState { $0.items } ?? []
+    let nextPage = currentItems.count / 20 + 1
+    let newItems = try await service.fetchItems(page: nextPage)
+    await viewState?.updateState { state in
+        state.items = currentItems + newItems
+    }
 }
 ```
 

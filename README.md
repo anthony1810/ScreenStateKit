@@ -21,6 +21,7 @@ Check out the [Definery](https://github.com/anthony1810/Definery) app for a real
 - [Architecture Overview](#architecture-overview)
 - [Complete Feature Example](#complete-feature-example)
 - [StateUpdatable](#stateupdatable)
+- [Reading State (readState)](#reading-state-readstate)
 - [Parent State Binding](#parent-state-binding)
 - [View Modifiers](#view-modifiers)
 - [Skeleton Loading (Placeholder)](#skeleton-loading-placeholder)
@@ -262,11 +263,10 @@ The `StateUpdatable` protocol provides a safe way to batch state updates with op
 
 ```swift
 @MainActor
-public protocol StateUpdatable {
+public protocol StateUpdatable: Sendable {
     func updateState(
-        _ updateBlock: @MainActor (_ state: Self) -> Void,
         withAnimation animation: Animation?,
-        disablesAnimations: Bool
+        _ updateBlock: @MainActor @Sendable (_ state: Self) -> Void
     )
 }
 ```
@@ -284,22 +284,68 @@ final class MyViewState: ScreenState, StateUpdatable {
 ### Usage
 
 ```swift
-// Basic state update (no animation)
+// Default: animated with .smooth
 await viewState?.updateState { state in
     state.items = newItems
     state.title = "Updated"
 }
 
-// Update with animation
-await viewState?.updateState({ state in
+// Update with a custom animation
+await viewState?.updateState(withAnimation: .easeInOut) { state in
     state.items = newItems
-}, withAnimation: .easeInOut)
+}
 
 // Update with animations disabled
-await viewState?.updateState({ state in
+await viewState?.updateState(withAnimation: .none) { state in
     state.items = newItems
-}, disablesAnimations: true)
+}
 ```
+
+> **Why `updateState` instead of mutating directly?** The state is `@MainActor`-isolated. From the actor store, every direct property write (`viewState?.items = …`) is its own hop onto the MainActor, so a multi-property mutation tears across several hops and renders in several SwiftUI passes. `updateState` batches all writes into **one** MainActor hop inside a single `withTransaction`, so the screen updates atomically with one animation. Always funnel writes through it — never mutate the state from outside the store.
+
+---
+
+## Reading State (readState)
+
+`readState` is the read-side counterpart to `updateState`. The store often needs to read **several** current values off the `@MainActor` state before computing the next update (e.g. the existing list before appending a page). Reading them one-by-one is unsafe:
+
+```swift
+// ❌ Each await is a separate MainActor hop — the state can change between them.
+let items   = await viewState?.items ?? []
+let isOpen  = await viewState?.isShowing ?? false   // may reflect a DIFFERENT state than `items`
+```
+
+`readState` collects all the reads inside one closure executed in a **single** MainActor hop, returning a consistent snapshot — a single value, or a tuple of matching arity:
+
+```swift
+// ✅ One hop, one coherent snapshot.
+guard let snapshot = await viewState?.readState({ state in
+    state.items
+    state.isShowing
+}) else { return }
+
+let items  = snapshot.0   // [Item]
+let isOpen = snapshot.1   // Bool
+```
+
+Naming the tuple at the call site reads best:
+
+```swift
+let (items, isOpen): ([Item], Bool) = await viewState?.readState { state in
+    state.items
+    state.isShowing
+} ?? ([], false)
+```
+
+A single value comes back unwrapped (no 1-tuple):
+
+```swift
+let title: String = await viewState?.readState { $0.title } ?? ""
+```
+
+It is backed by `StateValueBuilder`, a result builder using parameter packs, so it supports any number of values without per-arity overloads. The block returns `Sendable` values, so it is safe to carry the snapshot back into the actor.
+
+> **When to use it:** reach for `readState` whenever you need **two or more** related values atomically. For a single value, plain `await viewState?.foo` is equally safe and `readState` buys nothing.
 
 ---
 
@@ -822,7 +868,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `ActionLockable` | Provides a `lockKey` for action deduplication. Auto-conforms for `Hashable` types |
 | `NonPresentableError` | Protocol for errors that should be logged but not shown to the user (`isSilent: Bool`) |
 | `LoadingTrackable` | Declares whether an action should track loading state via `canTrackLoading` |
-| `StateUpdatable` | Provides `updateState(_:withAnimation:disablesAnimations:)` for batched state updates |
+| `StateUpdatable` | Provides `updateState(withAnimation:_:)` for batched writes and `readState(_:)` for atomic multi-value reads |
 | `PlaceholderRepresentable` | Declares `placeholder` and `isPlaceholder` for skeleton loading |
 | `StreamProducerType` | Actor protocol for multi-subscriber async stream producers |
 | `TypeNamed` | Provides `declaredName` and `typeNamed` for type name reflection |
@@ -854,6 +900,7 @@ func observe<T>(stream: AnyAsyncStream<T>) async {
 | `RMLoadmoreView` | Pre-built `ProgressView` for load-more pagination |
 | `AppRefreshAction<Option, Source>` | Envelope carrying the `option`, an optional `source` payload, and a unique `id` per emission |
 | `AppRefreshBehavior` | Delivery mode for `onAppRefresh`: `.onNextAppear` (default) or `.immediate` |
+| `StateValueBuilder` | `@resultBuilder` powering `readState(_:)`; uses parameter packs to return a single value or a tuple of any arity |
 
 ### View Modifiers
 
