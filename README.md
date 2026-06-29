@@ -49,7 +49,7 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.1.0")
+    .package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.4.0")
 ]
 ```
 
